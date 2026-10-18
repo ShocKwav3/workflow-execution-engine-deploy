@@ -1,0 +1,65 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: workflow-engine
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: workflow-engine
+    includeSelectors: false
+
+resources:
+  - ../../base
+  - postgres/postgres.yaml
+  - redis/redis.yaml
+
+patches:
+  - path: api-service-patch.yaml
+
+images:
+  - name: workflow-engine/api
+    newTag: unset
+  - name: workflow-engine/outbox-relay
+    newTag: unset
+  - name: workflow-engine/executor
+    newTag: unset
+  - name: workflow-engine/migrate
+    newTag: unset
+
+# Appends the migrate image tag to the Job name, so each tag gets a new Job.
+replacements:
+  - source:
+      kind: Job
+      name: migrate
+      fieldPath: spec.template.spec.containers.[name=migrate].image
+      options:
+        delimiter: ":"
+        index: 1
+    targets:
+      - select:
+          kind: Job
+          name: migrate
+        fieldPaths:
+          - metadata.name
+        options:
+          delimiter: "-"
+          index: 1
+
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGDATABASE=workflow_db
+      - PGUSER=workflow
+      - REDIS_URL=redis://redis:6379
+  - name: redis-config
+    files:
+      - redis/redis.conf
+
+# secret.env is gitignored: copy secret.env.example to create it.
+secretGenerator:
+  - name: app-secrets
+    envs:
+      - secret.env

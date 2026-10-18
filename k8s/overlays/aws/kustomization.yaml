@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: workflow-engine
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: workflow-engine
+    includeSelectors: false
+
+resources:
+  - ../../base
+
+images:
+  - name: workflow-engine/api
+    newTag: unset
+  - name: workflow-engine/outbox-relay
+    newTag: unset
+  - name: workflow-engine/executor
+    newTag: unset
+  - name: workflow-engine/migrate
+    newTag: unset
+
+# Appends the migrate image tag to the Job name, so each tag gets a new Job.
+replacements:
+  - source:
+      kind: Job
+      name: migrate
+      fieldPath: spec.template.spec.containers.[name=migrate].image
+      options:
+        delimiter: ":"
+        index: 1
+    targets:
+      - select:
+          kind: Job
+          name: migrate
+        fieldPaths:
+          - metadata.name
+        options:
+          delimiter: "-"
+          index: 1

@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: workflow-engine
+
+# Not in selectors: selectors are immutable after the first apply.
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: workflow-engine
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - api.yaml
+  - outbox-relay.yaml
+  - executor.yaml
+  - migrate-job.yaml
+
+configMapGenerator:
+  - name: app-config
+    literals:
+      - LOG_LEVEL=info
+      - LOG_PRETTY=false
+      - HEALTH_PORT=8081

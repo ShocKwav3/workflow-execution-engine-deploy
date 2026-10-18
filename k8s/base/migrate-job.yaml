@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Each overlay appends the image tag: the Pod template of a Job is immutable.
+  name: migrate
+  labels:
+    app.kubernetes.io/name: migrate
+spec:
+  # Retries cover a database that is not ready yet; a broken changeset fails every attempt.
+  backoffLimit: 4
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: migrate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        # The Liquibase image sets its user by name, which runAsNonRoot cannot verify.
+        runAsUser: 1001
+      containers:
+        - name: migrate
+          image: workflow-engine/migrate
+          args:
+            - update
+            - --changelog-file=db.changelog-master.yaml
+            - --url=jdbc:postgresql://$(PGHOST):$(PGPORT)/$(PGDATABASE)
+            - --username=$(PGUSER)
+            - --password=$(PGPASSWORD)
+          env:
+            - name: PGHOST
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: PGHOST
+            - name: PGPORT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: PGPORT
+            - name: PGDATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: PGDATABASE
+            - name: PGUSER
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: PGUSER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: PGPASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi

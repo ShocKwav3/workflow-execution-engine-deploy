@@ -1,0 +1,29 @@
+name: render
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create the local secret file
+        run: cp k8s/overlays/local/secret.env.example k8s/overlays/local/secret.env
+
+      - name: Render k8s/overlays/local
+        run: kubectl kustomize k8s/overlays/local > /dev/null
+
+      - name: Render k8s/overlays/aws
+        run: kubectl kustomize k8s/overlays/aws > /dev/null
+
+      - name: Compare redis.conf with the app repository
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/ShocKwav3/workflow-execution-engine/main/infra/redis/redis.conf -o upstream-redis.conf
+          diff upstream-redis.conf k8s/overlays/local/redis/redis.conf
