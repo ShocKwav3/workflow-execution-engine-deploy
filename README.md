@@ -1,15 +1,10 @@
 # workflow-execution-engine-deploy
 
-Kubernetes manifests for [workflow-execution-engine](https://github.com/ShocKwav3/workflow-execution-engine), written with Kustomize.
+Deployment configuration for [workflow-execution-engine](https://github.com/ShocKwav3/workflow-execution-engine), a workflow execution engine with an HTTP API, an outbox relay and an executor, backed by PostgreSQL and Redis.
 
-## Layout
+The application code, the Dockerfiles and the application CI live in the app repository. This repository holds only the description of how the system runs, so that a configuration change does not need an application build. A deploy changes the image tag here, and the cluster runs what this repository describes.
 
-```text
-k8s/base/              api, outbox-relay and executor Deployments, the api Service, the migrate Job, shared config
-k8s/overlays/local/    minikube: Postgres and Redis StatefulSets, local config and Secret, api Service as LoadBalancer
-k8s/overlays/aws/      EKS (not complete yet)
-```
+## Contents
 
-## Redis configuration
-
-`k8s/overlays/local/redis/redis.conf` is a copy of `infra/redis/redis.conf` in the app repository. CI fails when the two files differ. Change the app repository first, then copy the file here. The app repository's README explains each setting.
+- [`k8s/`](k8s/README.md): Kubernetes manifests (Kustomize), how they work, and the deploy guides for minikube and AWS EKS.
+- `.github/workflows/render.yml`: on every pull request and push to `main`, CI renders each Kustomize overlay and checks that the Redis configuration matches the app repository.
