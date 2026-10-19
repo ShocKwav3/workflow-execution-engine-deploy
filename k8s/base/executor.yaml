@@ -6,6 +6,11 @@ metadata:
     app.kubernetes.io/name: executor
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: executor
@@ -14,6 +19,8 @@ spec:
       labels:
         app.kubernetes.io/name: executor
     spec:
+      # Must exceed the app's 8 s forced exit.
+      terminationGracePeriodSeconds: 15
       securityContext:
         runAsNonRoot: true
       containers:
@@ -29,7 +36,28 @@ spec:
                 name: app-secrets
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 25m
+              memory: 64Mi
             limits:
-              memory: 384Mi
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http-health
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http-health
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http-health
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
