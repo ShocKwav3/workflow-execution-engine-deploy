@@ -54,8 +54,8 @@ spec:
             failureThreshold: 6
           resources:
             requests:
-              cpu: 50m
-              memory: 64Mi
+              cpu: 25m
+              memory: 32Mi
             # Above maxmemory: the AOF rewrite forks the process.
             limits:
               memory: 384Mi
