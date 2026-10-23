@@ -11,6 +11,7 @@ labels:
 resources:
   - ../../base
   - app-env-external-secret.yaml
+  - app-secrets-external-secret.yaml
 
 images:
   - name: workflow-engine/api
