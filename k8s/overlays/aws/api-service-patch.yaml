@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  annotations:
+    # Set at creation only: the controller does not support a change on an existing Service.
+    service.beta.kubernetes.io/aws-load-balancer-type: external
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: ip
+    # Matches the Name tag of a security group that allows only the operator's IP.
+    service.beta.kubernetes.io/aws-load-balancer-security-groups: wee-nlb
+    # Defaults to false when custom security groups are set.
+    service.beta.kubernetes.io/aws-load-balancer-manage-backend-security-group-rules: "true"
+spec:
+  type: LoadBalancer

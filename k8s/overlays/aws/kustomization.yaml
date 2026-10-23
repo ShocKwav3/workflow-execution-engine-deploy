@@ -56,8 +56,9 @@ configMapGenerator:
     files:
       - rds-ca/global-bundle.pem
 
-# The endpoints come from SSM Parameter Store through the app-env Secret.
 patches:
+  - path: api-service-patch.yaml
+  # The endpoints come from SSM Parameter Store through the app-env Secret.
   - target:
       kind: Deployment
     patch: |-
