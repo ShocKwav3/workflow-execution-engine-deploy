@@ -58,6 +58,16 @@ configMapGenerator:
 
 patches:
   - path: api-service-patch.yaml
+  # A Pod is Ready only when its NLB target is healthy, so a rollout keeps the old Pod until then.
+  - target:
+      kind: Namespace
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: workflow-engine
+        labels:
+          elbv2.k8s.aws/pod-readiness-gate-inject: enabled
   # The endpoints come from SSM Parameter Store through the app-env Secret.
   - target:
       kind: Deployment
