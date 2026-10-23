@@ -10,6 +10,7 @@ labels:
 
 resources:
   - ../../base
+  - app-env-external-secret.yaml
 
 images:
   - name: workflow-engine/api
@@ -39,3 +40,35 @@ replacements:
         options:
           delimiter: "-"
           index: 1
+
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - PGPORT=5432
+      - PGDATABASE=workflow_db
+      - PGUSER=workflow
+
+# The endpoints come from SSM Parameter Store through the app-env Secret.
+patches:
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          secretRef:
+            name: app-env
+  - target:
+      kind: Job
+      name: migrate
+    patch: |-
+      - op: test
+        path: /spec/template/spec/containers/0/env/0/name
+        value: PGHOST
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/valueFrom
+        value:
+          secretKeyRef:
+            name: app-env
+            key: PGHOST
