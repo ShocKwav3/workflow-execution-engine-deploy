@@ -49,6 +49,12 @@ configMapGenerator:
       - PGPORT=5432
       - PGDATABASE=workflow_db
       - PGUSER=workflow
+      - PGSSLMODE=verify-full
+      - PGSSLROOTCERT=/etc/rds-ca/global-bundle.pem
+  # The global bundle covers every commercial region, so no region is named here.
+  - name: rds-ca
+    files:
+      - rds-ca/global-bundle.pem
 
 # The endpoints come from SSM Parameter Store through the app-env Secret.
 patches:
@@ -73,3 +79,42 @@ patches:
           secretKeyRef:
             name: app-env
             key: PGHOST
+  # The RDS CA bundle for verify-full TLS.
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: rds-ca
+            configMap:
+              name: rds-ca
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: rds-ca
+            mountPath: /etc/rds-ca
+            readOnly: true
+  # Liquibase uses pgjdbc, which takes the TLS settings as JDBC URL parameters.
+  - target:
+      kind: Job
+      name: migrate
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: rds-ca
+            configMap:
+              name: rds-ca
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: rds-ca
+            mountPath: /etc/rds-ca
+            readOnly: true
+      - op: test
+        path: /spec/template/spec/containers/0/args/2
+        value: --url=jdbc:postgresql://$(PGHOST):$(PGPORT)/$(PGDATABASE)
+      - op: replace
+        path: /spec/template/spec/containers/0/args/2
+        value: --url=jdbc:postgresql://$(PGHOST):$(PGPORT)/$(PGDATABASE)?sslmode=verify-full&sslrootcert=/etc/rds-ca/global-bundle.pem
