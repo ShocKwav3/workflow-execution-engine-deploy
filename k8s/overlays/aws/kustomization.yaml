@@ -10,6 +10,8 @@ labels:
 
 resources:
   - ../../base
+  - app-env-external-secret.yaml
+  - app-secrets-external-secret.yaml
 
 images:
   - name: workflow-engine/api
@@ -39,3 +41,91 @@ replacements:
         options:
           delimiter: "-"
           index: 1
+
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - PGPORT=5432
+      - PGDATABASE=workflow_db
+      - PGUSER=workflow
+      - PGSSLMODE=verify-full
+      - PGSSLROOTCERT=/etc/rds-ca/global-bundle.pem
+  # The global bundle covers every commercial region, so no region is named here.
+  - name: rds-ca
+    files:
+      - rds-ca/global-bundle.pem
+
+patches:
+  - path: api-service-patch.yaml
+  # A Pod is Ready only when its NLB target is healthy, so a rollout keeps the old Pod until then.
+  - target:
+      kind: Namespace
+    patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: workflow-engine
+        labels:
+          elbv2.k8s.aws/pod-readiness-gate-inject: enabled
+  # The endpoints come from SSM Parameter Store through the app-env Secret.
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value:
+          secretRef:
+            name: app-env
+  - target:
+      kind: Job
+      name: migrate
+    patch: |-
+      - op: test
+        path: /spec/template/spec/containers/0/env/0/name
+        value: PGHOST
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/valueFrom
+        value:
+          secretKeyRef:
+            name: app-env
+            key: PGHOST
+  # The RDS CA bundle for verify-full TLS.
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: rds-ca
+            configMap:
+              name: rds-ca
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: rds-ca
+            mountPath: /etc/rds-ca
+            readOnly: true
+  # Liquibase uses pgjdbc, which takes the TLS settings as JDBC URL parameters.
+  - target:
+      kind: Job
+      name: migrate
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes
+        value:
+          - name: rds-ca
+            configMap:
+              name: rds-ca
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts
+        value:
+          - name: rds-ca
+            mountPath: /etc/rds-ca
+            readOnly: true
+      - op: test
+        path: /spec/template/spec/containers/0/args/2
+        value: --url=jdbc:postgresql://$(PGHOST):$(PGPORT)/$(PGDATABASE)
+      - op: replace
+        path: /spec/template/spec/containers/0/args/2
+        value: --url=jdbc:postgresql://$(PGHOST):$(PGPORT)/$(PGDATABASE)?sslmode=verify-full&sslrootcert=/etc/rds-ca/global-bundle.pem
