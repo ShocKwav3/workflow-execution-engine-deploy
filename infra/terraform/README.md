@@ -12,7 +12,7 @@ Requirements: Terraform 1.15 or later, and AWS credentials for the target accoun
 
 `bootstrap` holds the resources that every other configuration depends on. It is applied from a workstation, not from CI.
 
-- **State bucket:** `wee-tfstate-<account-id>-us-east-1-an`, in the account regional namespace. Versioning and SSE-S3 encryption are on, SSE-C uploads and public access are blocked, and Terraform refuses to destroy it. The bucket was created by hand and imported (`imports.tf`), because Terraform needs it before it can store state.
+- **State bucket:** `wee-tfstate-<account-id>-us-east-1-an`, in the account regional namespace. Versioning and SSE-S3 encryption are on, SSE-C uploads and public access are blocked, and Terraform refuses to destroy it. The bucket was created by hand and then imported, because Terraform needs it before it can store state.
 - **State:** every configuration stores its state in this bucket under its own key (`bootstrap/terraform.tfstate` for this one), with S3-native locking (`use_lockfile`).
 - **GitHub OIDC provider:** lets GitHub Actions jobs exchange their OIDC token for temporary AWS credentials. No access keys are stored.
 - **Plan role** (`ci/wee-terraform-plan`): trusted only for pull request jobs of this repository. `ReadOnlyAccess`, plus write access to the state lock files.
