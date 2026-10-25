@@ -6,5 +6,20 @@ The application code, the Dockerfiles and the application CI live in the app rep
 
 ## Contents
 
-- [`k8s/`](k8s/README.md): Kubernetes manifests (Kustomize), how they work, and the deploy guides for minikube and AWS EKS.
-- `.github/workflows/render.yml`: on every pull request and push to `main`, CI renders each Kustomize overlay and checks that the Redis configuration matches the app repository.
+### Kubernetes
+
+Kubernetes manifests (Kustomize): a shared base and one overlay each for minikube and AWS EKS, with the deploy guides for both.
+
+More: [`k8s/`](k8s/README.md)
+
+### Terraform
+
+Terraform configurations for the AWS environment. `bootstrap` holds the state bucket, the GitHub OIDC provider and the IAM roles that CI assumes; it is never destroyed.
+
+More: [`infra/terraform/`](infra/terraform/README.md)
+
+### Workflows
+
+GitHub Actions. On every pull request and push to `main`, `render.yml` renders each Kustomize overlay and checks that the Redis configuration matches the app repository.
+
+More: [`.github/workflows/`](.github/workflows/)
