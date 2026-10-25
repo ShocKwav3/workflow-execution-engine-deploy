@@ -3,3 +3,9 @@ variable "github_repository" {
   type        = string
   default     = "ShocKwav3@23660537/workflow-execution-engine-deploy@1417869970"
 }
+
+variable "github_actor_id" {
+  description = "Immutable ID of the only GitHub account whose workflow runs may assume the CI roles."
+  type        = string
+  default     = "23660537"
+}

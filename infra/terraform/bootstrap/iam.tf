@@ -23,6 +23,12 @@ data "aws_iam_policy_document" "plan_trust" {
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["repo:${var.github_repository}:pull_request"]
     }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:actor_id"
+      values   = [var.github_actor_id]
+    }
   }
 }
 
@@ -77,6 +83,12 @@ data "aws_iam_policy_document" "apply_trust" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["repo:${var.github_repository}:environment:aws"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:actor_id"
+      values   = [var.github_actor_id]
     }
   }
 }
