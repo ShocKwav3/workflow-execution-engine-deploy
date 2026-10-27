@@ -2,6 +2,7 @@ locals {
   cluster_security_group_id = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
 }
 
+# No egress rule on the data store groups: replies to the Pods pass because security groups are stateful.
 resource "aws_security_group" "rds" {
   name        = "wee-rds"
   description = "RDS PostgreSQL; inbound 5432 from the EKS cluster security group"
