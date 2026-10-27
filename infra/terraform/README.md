@@ -4,7 +4,7 @@ Terraform configurations for the AWS environment. Each folder is a separate conf
 
 | Folder | Contents | Lifetime |
 |---|---|---|
-| `bootstrap/` | S3 state bucket, GitHub OIDC provider, CI plan role and CI apply role | Created once, never destroyed |
+| `bootstrap/` | S3 state bucket, GitHub OIDC provider, CI plan role and CI apply role, ECR blob mounting | Created once, never destroyed |
 
 Requirements: Terraform 1.15 or later, and AWS credentials for the target account (for example `aws login`).
 
@@ -18,6 +18,7 @@ Requirements: Terraform 1.15 or later, and AWS credentials for the target accoun
 - **Who can assume the CI roles:** only workflow runs of this repository that the repository owner's GitHub account started. Both trust policies check the token's `actor_id` (`github_actor_id`) in addition to `sub`.
 - **Plan role** (`ci/wee-terraform-plan`): trusted only for pull request jobs of this repository. `ReadOnlyAccess`, plus write access to the state lock files.
 - **Apply role** (`ci/wee-terraform-apply`): trusted only for jobs in the `aws` GitHub environment, which allows the `main` branch only. It manages the services of the AWS environment, and IAM roles and policies under the path `/wee/`. Every role it creates or changes must carry the permissions boundary `PowerUserAccess`, so those roles cannot manage IAM. It cannot remove a boundary or change the CI roles.
+- **ECR blob mounting:** an account-wide ECR setting. Repositories share identical image layers, so the common base layers of the app images are stored once.
 
 Outputs: `state_bucket`, `plan_role_arn`, `apply_role_arn`, `apply_boundary_arn`.
 

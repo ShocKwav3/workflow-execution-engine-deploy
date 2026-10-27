@@ -42,3 +42,9 @@ resource "aws_s3_bucket_public_access_block" "state" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+
+# An account-wide setting, so it lives here and not with the repositories that each session destroys.
+resource "aws_ecr_account_setting" "blob_mounting" {
+  name  = "BLOB_MOUNTING"
+  value = "ENABLED"
+}
