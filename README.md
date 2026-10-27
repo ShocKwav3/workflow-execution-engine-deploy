@@ -14,7 +14,7 @@ More: [`k8s/`](k8s/README.md)
 
 ### Terraform
 
-Terraform configurations for the AWS environment. `bootstrap` holds the state bucket, the GitHub OIDC provider and the IAM roles that CI assumes; it is never destroyed.
+Terraform configurations for the AWS environment. `bootstrap` holds the state bucket, the GitHub OIDC provider and the IAM roles that CI assumes; it is never destroyed. `env` holds the network, the EKS cluster, the data stores and ECR; it is created for a session and destroyed after it.
 
 More: [`infra/terraform/`](infra/terraform/README.md)
 

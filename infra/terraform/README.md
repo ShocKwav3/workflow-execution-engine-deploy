@@ -5,6 +5,7 @@ Terraform configurations for the AWS environment. Each folder is a separate conf
 | Folder | Contents | Lifetime |
 |---|---|---|
 | `bootstrap/` | S3 state bucket, GitHub OIDC provider, CI plan role and CI apply role, ECR blob mounting | Created once, never destroyed |
+| `env/` | VPC, EKS cluster and nodes, RDS PostgreSQL, ElastiCache Redis, ECR repositories, IAM roles for the cluster and its controllers | Created for a session, then destroyed |
 
 Requirements: Terraform 1.15 or later, and AWS credentials for the target account (for example `aws login`).
 
@@ -22,15 +23,42 @@ Requirements: Terraform 1.15 or later, and AWS credentials for the target accoun
 
 Outputs: `state_bucket`, `plan_role_arn`, `apply_role_arn`, `apply_boundary_arn`.
 
+## env
+
+`env` holds the AWS environment. It is created for a working session and destroyed after it. State key: `env/terraform.tfstate`.
+
+- **Network:** a VPC with 2 public and 2 private subnets in `use1-az1` and `use1-az2`, an internet gateway, one NAT gateway, and an S3 gateway endpoint. The public subnets carry `kubernetes.io/role/elb`, so the AWS Load Balancer Controller places internet-facing load balancers there.
+- **EKS:** cluster `wee` (Kubernetes 1.36, access entries only), a managed node group of 3 × `t4g.small` (arm64) in the private subnets, and the EKS add-ons VPC CNI, Pod Identity Agent, kube-proxy and CoreDNS. Cluster access comes from explicit access entries for the admin role and the two CI roles, not from the identity that created the cluster.
+- **Data stores:** RDS PostgreSQL 16 (`wee-postgres`) and ElastiCache Redis OSS 7.1 (`wee-redis`, `maxmemory-policy noeviction`, TLS required), both private. RDS keeps the master password in Secrets Manager; it never enters the Terraform state.
+- **Security groups:** `wee-rds` and `wee-redis` accept connections only from the EKS cluster security group. `wee-nlb` accepts port 80 only from `operator_cidr`.
+- **Configuration for the cluster:** SSM parameters `/wee/app/PGHOST` and `/wee/app/REDIS_URL`, written from the data store endpoints.
+- **ECR:** `workflow-engine/{api,outbox-relay,executor,migrate}`, immutable tags, a lifecycle policy that keeps the 2 newest tagged images. `force_delete` lets `destroy` remove repositories that still contain images.
+- **IAM:** roles for the EKS cluster, the nodes, the AWS Load Balancer Controller and External Secrets Operator. Every role has the path `/wee/` and the permissions boundary `PowerUserAccess`, so the CI apply role can manage it. The controller roles reach their Pods through EKS Pod Identity.
+
+Input: `operator_cidr`, the public IPv4 address that may reach the API load balancer, as a `/32`. It has no default; pass it as `TF_VAR_operator_cidr`.
+
+Outputs: `cluster_name`, `db_secret_arn`, `ecr_repository_urls`, `rds_endpoint`, `redis_endpoint`.
+
 ## Initialize
 
-The state bucket name contains the account ID, so it is not in the code. Pass it to `terraform init`:
+The state bucket name contains the account ID, so it is not in the code. Pass it to `terraform init` in each configuration directory:
 
 ```bash
-cd infra/terraform/bootstrap
+cd infra/terraform/bootstrap   # or infra/terraform/env
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 terraform init -backend-config="bucket=wee-tfstate-${ACCOUNT_ID}-us-east-1-an"
 ```
+
+## Create and destroy env
+
+```bash
+cd infra/terraform/env
+export TF_VAR_operator_cidr="$(curl -fsS https://checkip.amazonaws.com)/32"
+terraform apply
+terraform destroy
+```
+
+`env` bills by the hour while it exists (EKS control plane, nodes, NAT gateway, RDS, ElastiCache). Destroy it at the end of each session.
 
 ## Format and validate
 
@@ -39,6 +67,7 @@ Run before each commit. Neither command calls AWS.
 ```bash
 terraform fmt -recursive infra/terraform
 terraform -chdir=infra/terraform/bootstrap validate
+terraform -chdir=infra/terraform/env validate
 ```
 
 `validate` needs an initialized configuration directory. Commit `.terraform.lock.hcl`; never commit `.terraform/` or state files.
