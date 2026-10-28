@@ -1,0 +1,5 @@
+apiVersion: v2
+name: secret-stores
+description: The ClusterSecretStore objects through which ESO reads SSM Parameter Store and Secrets Manager.
+type: application
+version: 0.1.0

@@ -2,5 +2,6 @@ k8s/overlays/local/secret.env
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
 crash.log
 crash.*.log
