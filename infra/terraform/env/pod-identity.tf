@@ -39,7 +39,7 @@ locals {
       service_account = "aws-load-balancer-controller"
       # The policy of the controller release that cluster-addons installs; update both together.
       # The boundary removes iam:ListServerCertificates and iam:GetServerCertificate; only TLS listeners with IAM certificates need them.
-      policy = file("${path.module}/files/lb-controller-iam-policy-v3.6.1.json")
+      policy = file("${path.module}/files/lb-controller-iam-policy-v3.6.2.json")
     }
     eso = {
       name            = "wee-eso"
