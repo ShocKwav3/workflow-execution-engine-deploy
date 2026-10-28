@@ -6,6 +6,7 @@ Terraform configurations for the AWS environment. Each folder is a separate conf
 |---|---|---|
 | `bootstrap/` | S3 state bucket, GitHub OIDC provider, CI plan role and CI apply role, ECR blob mounting | Created once, never destroyed |
 | `env/` | VPC, EKS cluster and nodes, RDS PostgreSQL, ElastiCache Redis, ECR repositories, IAM roles for the cluster and its controllers | Created for a session, then destroyed |
+| `cluster-addons/` | Helm releases in the cluster: AWS Load Balancer Controller, External Secrets Operator and its `ClusterSecretStore` objects | Applied after `env`, destroyed before it |
 
 Requirements: Terraform 1.15 or later, and AWS credentials for the target account (for example `aws login`).
 
@@ -39,26 +40,72 @@ Input: `operator_cidr`, the public IPv4 address that may reach the API load bala
 
 Outputs: `cluster_name`, `db_secret_arn`, `ecr_repository_urls`, `rds_endpoint`, `redis_endpoint`.
 
+## cluster-addons
+
+`cluster-addons` installs the cluster add-ons with `helm_release`. It is a separate configuration because the Helm provider needs a running cluster when Terraform plans. State key: `cluster-addons/terraform.tfstate`.
+
+- **Inputs from `env`:** `data "aws_eks_cluster"` reads the cluster `wee` by name: the API endpoint, the CA certificate and the VPC ID. The configuration reads no other state, and `env` needs no extra outputs.
+- **Authentication:** the Helm provider gets a short-lived token from `aws eks get-token` at each run, with the AWS credentials of whoever runs Terraform. That identity needs an EKS access entry with cluster admin rights (see `env`).
+- **AWS Load Balancer Controller:** chart 3.6.2 in `kube-system`. The IAM policy file in `env` belongs to this version; update both together. The service account name must match the Pod Identity association in `env`.
+- **External Secrets Operator:** chart 2.14.0 in `external-secrets`, with its CRDs.
+- **`ClusterSecretStore` objects:** `aws-parameter-store` and `aws-secrets-manager`, in the local chart `charts/secret-stores`, installed after ESO. A `kubernetes_manifest` would need the ESO CRDs at plan time, so the stores are a Helm release. Raise the chart `version` when you change a template.
+
 ## Initialize
 
 The state bucket name contains the account ID, so it is not in the code. Pass it to `terraform init` in each configuration directory:
 
 ```bash
-cd infra/terraform/bootstrap   # or infra/terraform/env
+cd infra/terraform/bootstrap   # or infra/terraform/env, infra/terraform/cluster-addons
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 terraform init -backend-config="bucket=wee-tfstate-${ACCOUNT_ID}-us-east-1-an"
 ```
 
-## Create and destroy env
+## Rebuild
 
-```bash
-cd infra/terraform/env
-export TF_VAR_operator_cidr="$(curl -fsS https://checkip.amazonaws.com)/32"
-terraform apply
-terraform destroy
-```
+Initialize each configuration first (see above).
 
-`env` bills by the hour while it exists (EKS control plane, nodes, NAT gateway, RDS, ElastiCache). Destroy it at the end of each session.
+1. Create the AWS environment, and point `kubectl` at the new cluster. Each new cluster has a new API endpoint.
+   ```bash
+   cd infra/terraform/env
+   export TF_VAR_operator_cidr="$(curl -fsS https://checkip.amazonaws.com)/32"
+   terraform apply
+   aws eks update-kubeconfig --name wee --region us-east-1
+   ```
+2. Install the add-ons:
+   ```bash
+   cd ../cluster-addons
+   terraform apply
+   ```
+3. Push the images and deploy the app: [`k8s/deploy-aws.md`](../../k8s/deploy-aws.md).
+
+`env` bills by the hour while it exists (EKS control plane, nodes, NAT gateway, RDS, ElastiCache), and the API load balancer adds to that. Tear everything down at the end of each session.
+
+## Teardown
+
+The order matters. The controllers delete what they created in AWS and remove their finalizers only while they run.
+
+1. Delete the api Service and the app namespace, and wait until the namespace is gone. The Load Balancer Controller deletes the Network Load Balancer; External Secrets Operator releases its `ExternalSecret` objects.
+   ```bash
+   kubectl delete service api -n workflow-engine
+   kubectl delete namespace workflow-engine
+   kubectl wait --for=delete namespace/workflow-engine --timeout=5m
+   aws elbv2 describe-load-balancers --region us-east-1 --query 'LoadBalancers[].LoadBalancerName'
+   ```
+   Expect `[]` from the last command.
+2. Remove the add-ons:
+   ```bash
+   cd infra/terraform/cluster-addons
+   terraform destroy
+   ```
+3. Remove the AWS environment:
+   ```bash
+   cd ../env
+   export TF_VAR_operator_cidr="$(curl -fsS https://checkip.amazonaws.com)/32"
+   terraform destroy
+   ```
+   If the VPC delete waits on a `DependencyViolation`, the controller's shared backend security group `k8s-traffic-wee-…` is still in the VPC. Delete it with `aws ec2 delete-security-group`, and the destroy continues.
+
+If `cluster-addons` is destroyed while the namespace still exists, the deletes hang on finalizers. Apply only the controller again (`terraform apply -target=helm_release.lb_controller`), wait for the namespace, then destroy.
 
 ## Format and validate
 
@@ -68,6 +115,7 @@ Run before each commit. Neither command calls AWS.
 terraform fmt -recursive infra/terraform
 terraform -chdir=infra/terraform/bootstrap validate
 terraform -chdir=infra/terraform/env validate
+terraform -chdir=infra/terraform/cluster-addons validate
 ```
 
-`validate` needs an initialized configuration directory. Commit `.terraform.lock.hcl`; never commit `.terraform/` or state files.
+`validate` needs an initialized configuration directory. Commit `.terraform.lock.hcl`; never commit `.terraform/`, state files or saved plan files (`*.tfplan`).

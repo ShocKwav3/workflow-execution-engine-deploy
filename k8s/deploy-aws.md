@@ -16,10 +16,11 @@ The overlay holds no account-specific or environment-specific values. The deploy
 
 - `aws`, `kubectl`, [`kustomize`](https://kubectl.docs.kubernetes.io/installation/kustomize/), `git`, and a local clone of the [app repository](https://github.com/ShocKwav3/workflow-execution-engine).
 - A `kubectl` context for the EKS cluster.
-- In the cluster: the AWS Load Balancer Controller, and External Secrets Operator with EKS Pod Identity.
-- Two `ClusterSecretStore` objects, created with the External Secrets Operator installation, not in this repository: `aws-parameter-store` (service `ParameterStore`) and `aws-secrets-manager` (service `SecretsManager`).
-- The SSM parameters above, and RDS with a managed master password.
-- The security group `wee-nlb` in the cluster VPC, with inbound TCP 80 from the allowed IP only.
+- The Terraform configurations `env` and `cluster-addons`, applied in this order ([`infra/terraform`](../infra/terraform/README.md)). They create:
+  - the AWS Load Balancer Controller, and External Secrets Operator with EKS Pod Identity;
+  - the two `ClusterSecretStore` objects `aws-parameter-store` (service `ParameterStore`) and `aws-secrets-manager` (service `SecretsManager`);
+  - the SSM parameters above, and RDS with a managed master password;
+  - the security group `wee-nlb` in the cluster VPC, with inbound TCP 80 from the allowed IP only.
 - The four images in ECR (`workflow-engine/api`, `outbox-relay`, `executor`, `migrate`), tagged with the commit SHA.
 
 ## Deploy
@@ -73,9 +74,10 @@ Only the IPs in the security group `wee-nlb` can connect.
 
 ## Remove
 
-Delete the api Service before you delete the cluster. The Load Balancer Controller deletes the Network Load Balancer only when the Service is deleted. If the cluster is deleted first, the load balancer stays and costs money.
+Delete the api Service and the namespace before you destroy `cluster-addons` or the cluster. The Load Balancer Controller deletes the Network Load Balancer only when the Service is deleted, and both controllers must run to remove their finalizers. If the cluster is deleted first, the load balancer stays and costs money.
 
 ```bash
 kubectl delete service api -n workflow-engine
 kubectl delete namespace workflow-engine
+kubectl wait --for=delete namespace/workflow-engine --timeout=5m
 ```
