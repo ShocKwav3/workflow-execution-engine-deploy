@@ -32,11 +32,8 @@ TAG="$(git -C "$APP_REPO" rev-parse --short HEAD)"
 echo "==> Tag $TAG"
 
 echo "==> Build images"
-docker build --target api-runtime -t "workflow-engine/api:$TAG" "$APP_REPO"
-docker build --target outbox-relay-runtime -t "workflow-engine/outbox-relay:$TAG" "$APP_REPO"
-docker build --target executor-runtime -t "workflow-engine/executor:$TAG" "$APP_REPO"
-docker build -f "$APP_REPO/packages/core/db/Dockerfile.liquibase" --target runtime \
-  -t "workflow-engine/migrate:$TAG" "$APP_REPO/packages/core/db"
+# Bake resolves the contexts in the file from the working directory.
+(cd "$APP_REPO" && TAG="$TAG" docker buildx bake -f docker/docker-bake.hcl --load)
 
 echo "==> Load images into minikube"
 for image in api outbox-relay executor migrate; do
