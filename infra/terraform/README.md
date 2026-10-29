@@ -8,7 +8,7 @@ Terraform configurations for the AWS environment. Each folder is a separate conf
 | `env/` | VPC, EKS cluster and nodes, RDS PostgreSQL, ElastiCache Redis, ECR repositories, IAM roles for the cluster and its controllers | Created for a session, then destroyed |
 | `cluster-addons/` | Helm releases in the cluster: AWS Load Balancer Controller, External Secrets Operator and its `ClusterSecretStore` objects | Applied after `env`, destroyed before it |
 
-Requirements: Terraform 1.15 or later, and AWS credentials for the target account (for example `aws login`).
+Requirements: Terraform 1.17 or later, and AWS credentials for the target account (for example `aws login`).
 
 ## bootstrap
 
@@ -118,4 +118,4 @@ terraform -chdir=infra/terraform/env validate
 terraform -chdir=infra/terraform/cluster-addons validate
 ```
 
-`validate` needs an initialized configuration directory. Commit `.terraform.lock.hcl`; never commit `.terraform/`, state files or saved plan files (`*.tfplan`).
+CI runs the same checks on every pull request, with `terraform init -backend=false`. `validate` needs an initialized configuration directory. Commit `.terraform.lock.hcl`; never commit `.terraform/`, state files or saved plan files (`*.tfplan`).

@@ -1,0 +1,51 @@
+name: config-scan
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  config-scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Scan the Terraform code
+        uses: bridgecrewio/checkov-action@c10e2438743528f9e4549758fad8b7a62052541d # v12.3136.0
+        with:
+          directory: infra/terraform
+          framework: terraform
+          output_format: cli
+          quiet: true
+          compact: true
+
+      # The overlays are Kustomize patches; only the rendered output is complete Kubernetes objects
+      - name: Download the rendered overlays
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@v8
+        with:
+          name: rendered
+          path: rendered
+
+      - name: Scan the rendered overlays
+        if: ${{ !cancelled() }}
+        uses: bridgecrewio/checkov-action@c10e2438743528f9e4549758fad8b7a62052541d # v12.3136.0
+        with:
+          directory: rendered
+          framework: kubernetes
+          output_format: cli
+          quiet: true
+          compact: true
+
+      - name: Scan the GitHub Actions workflows
+        if: ${{ !cancelled() }}
+        uses: bridgecrewio/checkov-action@c10e2438743528f9e4549758fad8b7a62052541d # v12.3136.0
+        with:
+          directory: .github
+          framework: github_actions
+          output_format: cli
+          quiet: true
+          compact: true

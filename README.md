@@ -20,6 +20,11 @@ More: [`infra/terraform/`](infra/terraform/README.md)
 
 ### Workflows
 
-GitHub Actions. On every pull request and push to `main`, `render.yml` renders each Kustomize overlay and checks that the Redis configuration matches the app repository.
+GitHub Actions. Every pull request and push to `main` runs `.github/workflows/ci.yml`. Each concern is a separate job:
+
+- `render`: renders each Kustomize overlay and checks that the Redis configuration matches the app repository.
+- `terraform`: `terraform fmt -check`, then `validate` for each configuration. It does not need AWS access.
+- `config-scan`: a static security scan of the Terraform code, the rendered overlays of `render`, and the workflows (Checkov).
+- `ci-passed`: fails unless every job above succeeded. It is the only required check on `main`. It posts a table of the job results on the pull request.
 
 More: [`.github/workflows/`](.github/workflows/)
