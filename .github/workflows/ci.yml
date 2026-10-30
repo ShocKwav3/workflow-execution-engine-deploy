@@ -40,6 +40,30 @@ jobs:
           fi
           echo "All needed jobs succeeded."
 
+      - name: Check out the report script
+        if: always()
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Download the security reports
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: security-report-*
+          merge-multiple: true
+          path: reports
+
+      - name: Install Node.js for the report script
+        if: always()
+        continue-on-error: true
+        uses: actions/setup-node@v7
+        with:
+          # Same major version as the app repository's .nvmrc
+          node-version: "26"
+
       - name: Write the job results
         if: always()
         continue-on-error: true
@@ -55,6 +79,10 @@ jobs:
             echo "| Job | Result |"
             echo "|---|---|"
             jq -r 'to_entries[] | "| `\(.key)` | \({success: "✅", failure: "❌", cancelled: "⏹️", skipped: "⏭️"}[.value.result] // "") \(.value.result) |"' <<< "$NEEDS"
+            echo
+            echo "### Security report (does not block the merge)"
+            echo
+            node .github/scripts/security-report.mjs reports || echo "The security report could not be built. Check the scan job logs."
             echo
             echo "[Workflow run]($RUN_URL)"
           } > ci-summary.md
