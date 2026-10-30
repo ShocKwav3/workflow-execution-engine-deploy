@@ -8,7 +8,7 @@ The application code, the Dockerfiles and the application CI live in the app rep
 
 ### Kubernetes
 
-Kubernetes manifests (Kustomize): a shared base and one overlay each for minikube and AWS EKS, with the deploy guides for both.
+Kubernetes manifests (Kustomize): a shared base and one overlay each for a local kind cluster and AWS EKS, with the deploy guides for both.
 
 More: [`k8s/`](k8s/README.md)
 
