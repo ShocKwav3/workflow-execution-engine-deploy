@@ -17,6 +17,10 @@ resource "aws_elasticache_parameter_group" "redis" {
 }
 
 resource "aws_elasticache_replication_group" "redis" {
+  #checkov:skip=CKV_AWS_31:TLS in transit is on; the RBAC user follows in a separate change
+  #checkov:skip=CKV_AWS_191:at-rest encryption with the AWS-managed key; a customer-managed key adds cost per key
+  #checkov:skip=CKV2_AWS_50:one node; Multi-AZ failover doubles the cost; cost; the environment lives only during a session
+
   replication_group_id = "wee-redis"
   description          = "Redis OSS for BullMQ"
 
@@ -45,6 +49,8 @@ resource "aws_elasticache_replication_group" "redis" {
 }
 
 resource "aws_ssm_parameter" "redis_url" {
+  #checkov:skip=CKV2_AWS_34:holds the host and port only, no secret
+
   name  = "/wee/app/REDIS_URL"
   type  = "String"
   value = "rediss://${aws_elasticache_replication_group.redis.primary_endpoint_address}:${aws_elasticache_replication_group.redis.port}"

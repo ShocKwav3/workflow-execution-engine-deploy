@@ -5,6 +5,15 @@ resource "aws_db_subnet_group" "main" {
 }
 
 resource "aws_db_instance" "main" {
+  #checkov:skip=CKV_AWS_293:deletion protection would block terraform destroy at the end of each session
+  #checkov:skip=CKV_AWS_161:the apps use the master user from Secrets Manager; IAM database auth is deferred
+  #checkov:skip=CKV_AWS_353:Performance Insights is off; cost; the environment lives only during a session
+  #checkov:skip=CKV_AWS_157:single-AZ; Multi-AZ doubles the cost; cost; the environment lives only during a session
+  #checkov:skip=CKV_AWS_133:no backups; the data is test data and is destroyed with the session
+  #checkov:skip=CKV_AWS_129:log exports bill CloudWatch ingestion; cost; the environment lives only during a session
+  #checkov:skip=CKV_AWS_118:enhanced monitoring is off; cost; the environment lives only during a session
+  #checkov:skip=CKV2_AWS_30:query logging bills CloudWatch ingestion; cost; the environment lives only during a session
+
   identifier = "wee-postgres"
   engine     = "postgres"
   # Major version only: RDS applies minor upgrades and retires old minor versions by itself.
@@ -33,12 +42,17 @@ resource "aws_db_instance" "main" {
   performance_insights_enabled = false
   monitoring_interval          = 0
 
+  auto_minor_version_upgrade = true
+  copy_tags_to_snapshot      = true
+
   backup_retention_period = 0
   deletion_protection     = false
   skip_final_snapshot     = true
 }
 
 resource "aws_ssm_parameter" "pghost" {
+  #checkov:skip=CKV2_AWS_34:holds the host name only, no secret
+
   name  = "/wee/app/PGHOST"
   type  = "String"
   value = aws_db_instance.main.address

@@ -43,6 +43,8 @@ resource "aws_vpc_security_group_ingress_rule" "redis_from_cluster" {
 
 # The LB controller finds this group by its Name tag (Service annotation).
 resource "aws_security_group" "nlb" {
+  #checkov:skip=CKV2_AWS_5:the AWS Load Balancer Controller attaches it to the NLB through a Service annotation
+
   name        = "wee-nlb"
   description = "NLB for the api; inbound 80 from the operator IP only"
   vpc_id      = aws_vpc.main.id

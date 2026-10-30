@@ -11,6 +11,8 @@ locals {
 }
 
 resource "aws_vpc" "main" {
+  #checkov:skip=CKV2_AWS_11:flow logs bill CloudWatch ingestion; cost; the environment lives only during a session
+
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
@@ -18,6 +20,11 @@ resource "aws_vpc" "main" {
   tags = {
     Name = "wee-vpc"
   }
+}
+
+# Adopts the VPC's default security group and removes its rules, so a resource without a group gets no access.
+resource "aws_default_security_group" "main" {
+  vpc_id = aws_vpc.main.id
 }
 
 resource "aws_subnet" "public" {

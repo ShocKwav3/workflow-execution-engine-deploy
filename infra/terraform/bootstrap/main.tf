@@ -7,6 +7,11 @@ locals {
 }
 
 resource "aws_s3_bucket" "state" {
+  #checkov:skip=CKV_AWS_18:access logs need a second bucket; versioning keeps the state history
+  #checkov:skip=CKV2_AWS_62:no consumer for bucket events
+  #checkov:skip=CKV_AWS_144:one region; cross-region replication doubles storage for a learning project
+  #checkov:skip=CKV_AWS_145:SSE-S3 encryption at rest; a customer-managed key adds cost and no access boundary here
+
   bucket           = local.state_bucket_name
   bucket_namespace = "account-regional"
 
@@ -20,6 +25,22 @@ resource "aws_s3_bucket_versioning" "state" {
 
   versioning_configuration {
     status = "Enabled"
+  }
+}
+
+# Versioning keeps every old state file; old versions expire after 90 days.
+resource "aws_s3_bucket_lifecycle_configuration" "state" {
+  bucket = aws_s3_bucket.state.id
+
+  rule {
+    id     = "expire-old-state-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
   }
 }
 
