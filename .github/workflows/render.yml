@@ -1,9 +1,7 @@
 name: render
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
@@ -12,16 +10,27 @@ jobs:
   render:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out the repository
+        uses: actions/checkout@v7
 
       - name: Create the local secret file
         run: cp k8s/overlays/local/secret.env.example k8s/overlays/local/secret.env
 
       - name: Render k8s/overlays/local
-        run: kubectl kustomize k8s/overlays/local > /dev/null
+        run: |
+          mkdir -p rendered
+          kubectl kustomize k8s/overlays/local > rendered/local.yaml
 
       - name: Render k8s/overlays/aws
-        run: kubectl kustomize k8s/overlays/aws > /dev/null
+        run: kubectl kustomize k8s/overlays/aws > rendered/aws.yaml
+
+      - name: Upload the rendered overlays for the config scan
+        uses: actions/upload-artifact@v7
+        with:
+          name: rendered
+          path: rendered
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Compare redis.conf with the app repository
         run: |

@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.15.0"
+  required_version = ">= 1.17.0"
 
   # The bucket name holds the account ID, so `terraform init -backend-config="bucket=..."` passes it in.
   backend "s3" {

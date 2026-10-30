@@ -23,6 +23,12 @@ resource "aws_iam_role_policy_attachment" "cluster" {
 }
 
 resource "aws_eks_cluster" "main" {
+  #checkov:skip=CKV_AWS_58:EKS encrypts the Kubernetes API data at rest by default; KMS envelope encryption adds a key per session
+  #checkov:skip=CKV_AWS_37:control plane logs bill CloudWatch ingestion; cost; the environment lives only during a session
+  #checkov:skip=CKV_AWS_38:IAM and access entries authenticate every request; CI on GitHub-hosted runners needs the public endpoint until GitOps
+  #checkov:skip=CKV_AWS_39:IAM and access entries authenticate every request; CI on GitHub-hosted runners needs the public endpoint until GitOps
+  #checkov:skip=CKV_AWS_339:the version is set on purpose and is in EKS standard support; the Checkov version list lags
+
   name     = "wee"
   version  = "1.36"
   role_arn = aws_iam_role.cluster.arn

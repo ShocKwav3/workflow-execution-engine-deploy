@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    uses: ./.github/workflows/render.yml
+
+  terraform:
+    uses: ./.github/workflows/terraform.yml
+
+  config-scan:
+    # Scans the overlays that render produced, so a broken overlay fails only render
+    needs: [render]
+    uses: ./.github/workflows/config-scan.yml
+
+  ci-passed:
+    # always() so the gate fails instead of being skipped when a needed job fails
+    if: always()
+    needs: [render, terraform, config-scan]
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Require every needed job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          not_passed=$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"' <<< "$NEEDS")
+          if [ -n "$not_passed" ]; then
+            echo "$not_passed"
+            exit 1
+          fi
+          echo "All needed jobs succeeded."
+
+      - name: Check out the report script
+        if: always()
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Download the security reports
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: security-report-*
+          merge-multiple: true
+          path: reports
+
+      - name: Install Node.js for the report script
+        if: always()
+        continue-on-error: true
+        uses: actions/setup-node@v7
+        with:
+          # Same major version as the app repository's .nvmrc
+          node-version: "26"
+
+      - name: Write the job results
+        if: always()
+        continue-on-error: true
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          # On pull_request, github.sha is the test merge commit, not the pushed commit
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "### CI results for ${SHA:0:7}"
+            echo
+            echo "| Job | Result |"
+            echo "|---|---|"
+            jq -r 'to_entries[] | "| `\(.key)` | \({success: "✅", failure: "❌", cancelled: "⏹️", skipped: "⏭️"}[.value.result] // "") \(.value.result) |"' <<< "$NEEDS"
+            echo
+            echo "### Security report (does not block the merge)"
+            echo
+            node .github/scripts/security-report.mjs reports || echo "The security report could not be built. Check the scan job logs."
+            echo
+            echo "[Workflow run]($RUN_URL)"
+          } > ci-summary.md
+          cat ci-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post the job results on the pull request
+        if: always() && github.event_name == 'pull_request'
+        # A failed report must not block a merge that the gate allows
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: ci-summary
+          path: ci-summary.md
+          hide_and_recreate: true
+          hide_classify: OUTDATED

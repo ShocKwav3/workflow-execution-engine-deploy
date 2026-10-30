@@ -3,6 +3,8 @@ locals {
 }
 
 resource "aws_ecr_repository" "app" {
+  #checkov:skip=CKV_AWS_136:AES256 encryption at rest; a customer-managed key adds cost per key
+
   for_each = local.ecr_repositories
 
   name                 = "workflow-engine/${each.key}"
@@ -12,6 +14,10 @@ resource "aws_ecr_repository" "app" {
 
   encryption_configuration {
     encryption_type = "AES256"
+  }
+
+  image_scanning_configuration {
+    scan_on_push = true
   }
 }
 

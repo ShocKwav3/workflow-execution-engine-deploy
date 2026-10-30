@@ -106,6 +106,12 @@ resource "aws_iam_role_policy_attachment" "apply_read_only" {
 }
 
 data "aws_iam_policy_document" "apply" {
+  #checkov:skip=CKV_AWS_356:service-level wildcards by design (ADR-110); created roles are capped by the PowerUserAccess boundary
+  #checkov:skip=CKV_AWS_109:IAM actions limited to the /wee/ path and the boundary condition (ADR-110)
+  #checkov:skip=CKV_AWS_111:the apply role must create and delete the env resources (ADR-110)
+  #checkov:skip=CKV_AWS_107:credential actions are needed for the env resources; limited by the boundary (ADR-110)
+  #checkov:skip=CKV_AWS_108:read access is needed to plan and apply (ADR-110)
+
   statement {
     sid = "ManageServices"
     actions = [
