@@ -41,6 +41,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
     noncurrent_version_expiration {
       noncurrent_days = 90
     }
+
+    # Parts of an interrupted upload are billed but invisible; 1 day is the smallest unit S3 accepts.
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
   }
 }
 
