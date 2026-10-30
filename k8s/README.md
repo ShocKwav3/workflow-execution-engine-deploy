@@ -12,7 +12,7 @@ base/                       objects that every environment shares
   migrate-job.yaml          Liquibase migration Job
   namespace.yaml            namespace workflow-engine
   kustomization.yaml        resources, labels, shared config (app-config)
-overlays/local/             minikube
+overlays/local/             kind
   postgres/, redis/         StatefulSets, headless Services, Redis configuration
   api-service-patch.yaml    api Service as LoadBalancer
   secret.env.example        template for the gitignored secret.env
@@ -23,8 +23,8 @@ overlays/aws/               EKS
   app-secrets-external-secret.yaml  database password from Secrets Manager
   api-service-patch.yaml    api Service as an internet-facing Network Load Balancer
   kustomization.yaml        image placeholders, TLS settings, patches
-deploy-local.md             deploy guide for minikube
-deploy-local.sh             build and deploy to minikube in one command (see deploy-local.md)
+deploy-local.md             deploy guide for kind
+deploy-local.sh             build and deploy to kind in one command (see deploy-local.md)
 deploy-aws.md               deploy guide for EKS
 ```
 
@@ -58,5 +58,5 @@ Kustomize generates `app-config`, and the local `app-secrets`, with a content ha
 
 | Environment | Overlay | Guide |
 |---|---|---|
-| Local (minikube) | `overlays/local` | [deploy-local.md](deploy-local.md) |
+| Local (kind) | `overlays/local` | [deploy-local.md](deploy-local.md) |
 | Production (AWS EKS) | `overlays/aws` | [deploy-aws.md](deploy-aws.md) |
