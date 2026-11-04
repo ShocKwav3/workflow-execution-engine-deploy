@@ -35,7 +35,7 @@ locals {
     vpc-cni                = { configuration_values = jsonencode({ enableNetworkPolicy = "true" }) }
     eks-pod-identity-agent = { configuration_values = null }
   }
-  addons_after_nodes  = ["kube-proxy", "coredns"]
+  addons_after_nodes = ["kube-proxy", "coredns"]
 }
 
 data "aws_eks_addon_version" "main" {
