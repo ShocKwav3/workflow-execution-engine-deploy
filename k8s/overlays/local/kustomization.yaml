@@ -12,6 +12,7 @@ resources:
   - ../../base
   - postgres/postgres.yaml
   - redis/redis.yaml
+  - network-policies.yaml
 
 patches:
   - path: api-service-patch.yaml

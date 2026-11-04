@@ -19,6 +19,9 @@ metadata:
   name: postgres
   labels:
     app.kubernetes.io/name: postgres
+  annotations:
+    checkov.io/skip1: "CKV_K8S_11=No CPU limit: a limit throttles the container while the node has free CPU"
+    checkov.io/skip2: "CKV_K8S_15=The image is loaded into the node or pinned, so a pull on each start adds nothing"
 spec:
   serviceName: postgres
   replicas: 1
@@ -30,9 +33,25 @@ spec:
       labels:
         app.kubernetes.io/name: postgres
     spec:
+      # No program in this Pod calls the Kubernetes API.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # Not the image's UID 999: Checkov wants a UID above 10000.
+        runAsUser: 10001
+        runAsGroup: 10001
+        # Makes the volume writable for the non-root user on storage that supports ownership changes.
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
-          image: postgres:16
+          image: postgres:16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: tcp-postgres
               containerPort: 5432
@@ -47,17 +66,22 @@ spec:
                 configMapKeyRef:
                   name: app-config
                   key: PGUSER
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: PGPASSWORD
+            - name: POSTGRES_PASSWORD_FILE
+              value: /etc/secrets/app/PGPASSWORD
             # A subdirectory: initdb refuses a mount point that contains lost+found.
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            # The entrypoint writes a temporary passwd file here for initdb (nss_wrapper).
+            - name: tmp
+              mountPath: /tmp
+            - name: app-secrets
+              mountPath: /etc/secrets/app
+              readOnly: true
           readinessProbe:
             exec:
               command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
@@ -74,6 +98,18 @@ spec:
               memory: 128Mi
             limits:
               memory: 512Mi
+      volumes:
+        - name: run
+          emptyDir:
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: app-secrets
+          secret:
+            secretName: app-secrets
+            # Readable by the Pod's fsGroup only.
+            defaultMode: 0440
   volumeClaimTemplates:
     - metadata:
         name: postgres-data

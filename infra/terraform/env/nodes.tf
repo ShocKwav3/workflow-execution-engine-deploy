@@ -47,6 +47,9 @@ resource "aws_eks_addon" "before_nodes" {
   cluster_name  = aws_eks_cluster.main.name
   addon_name    = each.key
   addon_version = data.aws_eks_addon_version.main[each.key].version
+
+  # Without it, the VPC CNI ignores NetworkPolicy objects. The schema types the flag as a string.
+  configuration_values = each.key == "vpc-cni" ? jsonencode({ enableNetworkPolicy = "true" }) : null
 }
 
 resource "aws_eks_node_group" "main" {

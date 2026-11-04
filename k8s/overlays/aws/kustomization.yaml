@@ -12,6 +12,7 @@ resources:
   - ../../base
   - app-env-external-secret.yaml
   - app-secrets-external-secret.yaml
+  - network-policies.yaml
 
 images:
   - name: workflow-engine/api
@@ -51,6 +52,8 @@ configMapGenerator:
       - PGUSER=workflow
       - PGSSLMODE=verify-full
       - PGSSLROOTCERT=/etc/rds-ca/global-bundle.pem
+      - PGHOST_FILE=/etc/secrets/env/PGHOST
+      - REDIS_URL_FILE=/etc/secrets/env/REDIS_URL
   # The global bundle covers every commercial region, so no region is named here.
   - name: rds-ca
     files:
@@ -68,7 +71,7 @@ patches:
         name: workflow-engine
         labels:
           elbv2.k8s.aws/pod-readiness-gate-inject: enabled
-  # The endpoints come from SSM Parameter Store through the app-env Secret.
+  # Temporary: images before PGHOST_FILE and REDIS_URL_FILE still read the variables. Remove after their rollout.
   - target:
       kind: Deployment
     patch: |-
@@ -77,6 +80,23 @@ patches:
         value:
           secretRef:
             name: app-env
+  # The endpoints come from SSM Parameter Store through the app-env Secret, read as files (PGHOST_FILE, REDIS_URL_FILE).
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: app-env
+          secret:
+            secretName: app-env
+            defaultMode: 0440
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: app-env
+          mountPath: /etc/secrets/env
+          readOnly: true
   - target:
       kind: Job
       name: migrate
@@ -94,35 +114,37 @@ patches:
   - target:
       kind: Deployment
     patch: |-
+      # Appends: an add on the list path replaces the list, which drops the base volumes.
       - op: add
-        path: /spec/template/spec/volumes
+        path: /spec/template/spec/volumes/-
         value:
-          - name: rds-ca
-            configMap:
-              name: rds-ca
+          name: rds-ca
+          configMap:
+            name: rds-ca
       - op: add
-        path: /spec/template/spec/containers/0/volumeMounts
+        path: /spec/template/spec/containers/0/volumeMounts/-
         value:
-          - name: rds-ca
-            mountPath: /etc/rds-ca
-            readOnly: true
+          name: rds-ca
+          mountPath: /etc/rds-ca
+          readOnly: true
   # Liquibase uses pgjdbc, which takes the TLS settings as JDBC URL parameters.
   - target:
       kind: Job
       name: migrate
     patch: |-
+      # Appends: an add on the list path replaces the list, which drops the base volumes.
       - op: add
-        path: /spec/template/spec/volumes
+        path: /spec/template/spec/volumes/-
         value:
-          - name: rds-ca
-            configMap:
-              name: rds-ca
+          name: rds-ca
+          configMap:
+            name: rds-ca
       - op: add
-        path: /spec/template/spec/containers/0/volumeMounts
+        path: /spec/template/spec/containers/0/volumeMounts/-
         value:
-          - name: rds-ca
-            mountPath: /etc/rds-ca
-            readOnly: true
+          name: rds-ca
+          mountPath: /etc/rds-ca
+          readOnly: true
       - op: test
         path: /spec/template/spec/containers/0/args/2
         value: --url=jdbc:postgresql://$(PGHOST):$(PGPORT)/$(PGDATABASE)
