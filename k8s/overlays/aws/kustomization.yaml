@@ -71,15 +71,6 @@ patches:
         name: workflow-engine
         labels:
           elbv2.k8s.aws/pod-readiness-gate-inject: enabled
-  # Temporary: images before PGHOST_FILE and REDIS_URL_FILE still read the variables. Remove after their rollout.
-  - target:
-      kind: Deployment
-    patch: |-
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom/-
-        value:
-          secretRef:
-            name: app-env
   # The endpoints come from SSM Parameter Store through the app-env Secret, read as files (PGHOST_FILE, REDIS_URL_FILE).
   - target:
       kind: Deployment
