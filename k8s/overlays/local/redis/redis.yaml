@@ -19,6 +19,9 @@ metadata:
   name: redis
   labels:
     app.kubernetes.io/name: redis
+  annotations:
+    checkov.io/skip1: "CKV_K8S_11=No CPU limit: a limit throttles the container while the node has free CPU"
+    checkov.io/skip2: "CKV_K8S_15=The image is loaded into the node or pinned, so a pull on each start adds nothing"
 spec:
   serviceName: redis
   replicas: 1
@@ -43,7 +46,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: redis
-          image: redis:8.10.2
+          image: redis:8.10.2@sha256:97ec88159e6d7cfb5ddef9015386087d58a912de80112f06ebdfa78fa5989901
           command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
           securityContext:
             allowPrivilegeEscalation: false

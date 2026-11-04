@@ -4,6 +4,10 @@ metadata:
   name: executor
   labels:
     app.kubernetes.io/name: executor
+  annotations:
+    checkov.io/skip1: "CKV_K8S_11=No CPU limit: a limit throttles the container while the node has free CPU"
+    checkov.io/skip2: "CKV_K8S_15=The image is loaded into the node or pinned, so a pull on each start adds nothing"
+    checkov.io/skip3: "CKV_K8S_43=The tag is a commit SHA; the deploy sets the digest after the registry push"
 spec:
   replicas: 1
   strategy:
