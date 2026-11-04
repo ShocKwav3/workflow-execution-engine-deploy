@@ -10,6 +10,7 @@ metadata:
     checkov.io/skip2: "CKV_K8S_15=The image is loaded into the node or pinned, so a pull on each start adds nothing"
     checkov.io/skip3: "CKV_K8S_43=The tag is a commit SHA; the deploy sets the digest after the registry push"
     checkov.io/skip4: "CKV_K8S_35=Liquibase reads a password only from arguments, environment variables or a properties file"
+    checkov.io/skip5: "CKV_K8S_40=Runs as the user of the upstream Liquibase image, which owns /liquibase"
 spec:
   # Retries cover a database that is not ready yet; a broken changeset fails every attempt.
   backoffLimit: 4
@@ -24,9 +25,8 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
-        # Above 10000, so the UID matches no user on the node.
-        runAsUser: 10001
-        runAsGroup: 10001
+        # The Liquibase image's own user: other UIDs cannot enter /liquibase. The image sets it by name.
+        runAsUser: 1001
         seccompProfile:
           type: RuntimeDefault
       volumes:
