@@ -15,6 +15,8 @@ spec:
         app.kubernetes.io/name: migrate
     spec:
       restartPolicy: Never
+      # No program in this Pod calls the Kubernetes API.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         # Above 10000, so the UID matches no user on the node.

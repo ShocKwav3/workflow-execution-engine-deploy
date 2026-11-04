@@ -21,6 +21,8 @@ spec:
     spec:
       # Must exceed the preStop sleep plus the app's 8 s forced exit.
       terminationGracePeriodSeconds: 20
+      # No program in this Pod calls the Kubernetes API.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         # Above 10000, so the UID matches no user on the node.

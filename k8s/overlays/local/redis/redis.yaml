@@ -30,6 +30,8 @@ spec:
       labels:
         app.kubernetes.io/name: redis
     spec:
+      # No program in this Pod calls the Kubernetes API.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         # Not the image's UID 999: Checkov wants a UID above 10000.
