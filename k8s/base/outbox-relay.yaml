@@ -32,12 +32,19 @@ spec:
         # Above 10000, so the UID matches no user on the node.
         runAsUser: 10001
         runAsGroup: 10001
+        # Group owner of the mounted Secret files.
+        fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        - name: app-secrets
+          secret:
+            secretName: app-secrets
+            # Readable by the Pod's fsGroup only.
+            defaultMode: 0440
       containers:
         - name: outbox-relay
           image: workflow-engine/outbox-relay
@@ -50,12 +57,16 @@ spec:
             # The only writable path: the root filesystem is read-only.
             - name: tmp
               mountPath: /tmp
+            - name: app-secrets
+              mountPath: /etc/secrets/app
+              readOnly: true
           ports:
             - name: http-health
               containerPort: 8081
           envFrom:
             - configMapRef:
                 name: app-config
+            # Temporary: images before the password file still read PGPASSWORD. Remove after their rollout.
             - secretRef:
                 name: app-secrets
           resources:

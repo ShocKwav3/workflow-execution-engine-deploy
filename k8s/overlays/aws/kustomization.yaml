@@ -51,6 +51,8 @@ configMapGenerator:
       - PGUSER=workflow
       - PGSSLMODE=verify-full
       - PGSSLROOTCERT=/etc/rds-ca/global-bundle.pem
+      - PGHOST_FILE=/etc/secrets/env/PGHOST
+      - REDIS_URL_FILE=/etc/secrets/env/REDIS_URL
   # The global bundle covers every commercial region, so no region is named here.
   - name: rds-ca
     files:
@@ -68,7 +70,7 @@ patches:
         name: workflow-engine
         labels:
           elbv2.k8s.aws/pod-readiness-gate-inject: enabled
-  # The endpoints come from SSM Parameter Store through the app-env Secret.
+  # Temporary: images before PGHOST_FILE and REDIS_URL_FILE still read the variables. Remove after their rollout.
   - target:
       kind: Deployment
     patch: |-
@@ -77,6 +79,23 @@ patches:
         value:
           secretRef:
             name: app-env
+  # The endpoints come from SSM Parameter Store through the app-env Secret, read as files (PGHOST_FILE, REDIS_URL_FILE).
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: app-env
+          secret:
+            secretName: app-env
+            defaultMode: 0440
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: app-env
+          mountPath: /etc/secrets/env
+          readOnly: true
   - target:
       kind: Job
       name: migrate

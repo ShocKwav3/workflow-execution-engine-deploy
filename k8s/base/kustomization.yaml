@@ -22,3 +22,4 @@ configMapGenerator:
       - LOG_LEVEL=info
       - LOG_PRETTY=false
       - HEALTH_PORT=8081
+      - PGPASSWORD_FILE=/etc/secrets/app/PGPASSWORD

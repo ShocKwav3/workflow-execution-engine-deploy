@@ -66,11 +66,8 @@ spec:
                 configMapKeyRef:
                   name: app-config
                   key: PGUSER
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: PGPASSWORD
+            - name: POSTGRES_PASSWORD_FILE
+              value: /etc/secrets/app/PGPASSWORD
             # A subdirectory: initdb refuses a mount point that contains lost+found.
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
@@ -82,6 +79,9 @@ spec:
             # The entrypoint writes a temporary passwd file here for initdb (nss_wrapper).
             - name: tmp
               mountPath: /tmp
+            - name: app-secrets
+              mountPath: /etc/secrets/app
+              readOnly: true
           readinessProbe:
             exec:
               command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
@@ -105,6 +105,11 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        - name: app-secrets
+          secret:
+            secretName: app-secrets
+            # Readable by the Pod's fsGroup only.
+            defaultMode: 0440
   volumeClaimTemplates:
     - metadata:
         name: postgres-data
