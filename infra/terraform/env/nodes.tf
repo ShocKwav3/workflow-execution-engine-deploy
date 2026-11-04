@@ -30,26 +30,28 @@ resource "aws_iam_role_policy_attachment" "node" {
 
 locals {
   # Nodes stay NotReady without the VPC CNI; CoreDNS Pods need nodes to run on.
-  addons_before_nodes = ["vpc-cni", "eks-pod-identity-agent"]
-  addons_after_nodes  = ["kube-proxy", "coredns"]
+  addons_before_nodes = {
+    # Without it, the VPC CNI ignores NetworkPolicy objects; the schema types the flag as a string.
+    vpc-cni                = { configuration_values = jsonencode({ enableNetworkPolicy = "true" }) }
+    eks-pod-identity-agent = { configuration_values = null }
+  }
+  addons_after_nodes = ["kube-proxy", "coredns"]
 }
 
 data "aws_eks_addon_version" "main" {
-  for_each = toset(concat(local.addons_before_nodes, local.addons_after_nodes))
+  for_each = toset(concat(keys(local.addons_before_nodes), local.addons_after_nodes))
 
   addon_name         = each.key
   kubernetes_version = aws_eks_cluster.main.version
 }
 
 resource "aws_eks_addon" "before_nodes" {
-  for_each = toset(local.addons_before_nodes)
+  for_each = local.addons_before_nodes
 
-  cluster_name  = aws_eks_cluster.main.name
-  addon_name    = each.key
-  addon_version = data.aws_eks_addon_version.main[each.key].version
-
-  # Without it, the VPC CNI ignores NetworkPolicy objects. The schema types the flag as a string.
-  configuration_values = each.key == "vpc-cni" ? jsonencode({ enableNetworkPolicy = "true" }) : null
+  cluster_name         = aws_eks_cluster.main.name
+  addon_name           = each.key
+  addon_version        = data.aws_eks_addon_version.main[each.key].version
+  configuration_values = each.value.configuration_values
 }
 
 resource "aws_eks_node_group" "main" {
