@@ -66,9 +66,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: app-config
-            # Temporary: images before the password file still read PGPASSWORD. Remove after their rollout.
-            - secretRef:
-                name: app-secrets
           resources:
             requests:
               cpu: 50m
