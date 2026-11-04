@@ -17,11 +17,27 @@ spec:
       restartPolicy: Never
       securityContext:
         runAsNonRoot: true
-        # The Liquibase image sets its user by name, which runAsNonRoot cannot verify.
-        runAsUser: 1001
+        # Above 10000, so the UID matches no user on the node.
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
       containers:
         - name: migrate
           image: workflow-engine/migrate
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # The only writable path: the root filesystem is read-only.
+            - name: tmp
+              mountPath: /tmp
           args:
             - update
             - --changelog-file=db.changelog-master.yaml

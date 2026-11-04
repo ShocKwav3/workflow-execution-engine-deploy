@@ -60,3 +60,5 @@ Kustomize generates `app-config`, and the local `app-secrets`, with a content ha
 |---|---|---|
 | Local (kind) | `overlays/local` | [deploy-local.md](deploy-local.md) |
 | Production (AWS EKS) | `overlays/aws` | [deploy-aws.md](deploy-aws.md) |
+
+**App repository CI.** The app repository's CI deploys with `deploy-local.sh` and `overlays/local`. A change to either affects every app pull request after the merge. Keep the change backward compatible: the app code on `main` must still deploy and pass with it. The [app repository's README](https://github.com/ShocKwav3/workflow-execution-engine#changes-that-need-both-repositories) describes a change that needs both repositories.

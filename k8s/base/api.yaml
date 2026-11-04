@@ -23,9 +23,27 @@ spec:
       terminationGracePeriodSeconds: 20
       securityContext:
         runAsNonRoot: true
+        # Above 10000, so the UID matches no user on the node.
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
       containers:
         - name: api
           image: workflow-engine/api
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # The only writable path: the root filesystem is read-only.
+            - name: tmp
+              mountPath: /tmp
           ports:
             - name: http
               containerPort: 3000

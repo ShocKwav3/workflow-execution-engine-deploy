@@ -94,35 +94,37 @@ patches:
   - target:
       kind: Deployment
     patch: |-
+      # Appends: an add on the list path replaces the list, which drops the base volumes.
       - op: add
-        path: /spec/template/spec/volumes
+        path: /spec/template/spec/volumes/-
         value:
-          - name: rds-ca
-            configMap:
-              name: rds-ca
+          name: rds-ca
+          configMap:
+            name: rds-ca
       - op: add
-        path: /spec/template/spec/containers/0/volumeMounts
+        path: /spec/template/spec/containers/0/volumeMounts/-
         value:
-          - name: rds-ca
-            mountPath: /etc/rds-ca
-            readOnly: true
+          name: rds-ca
+          mountPath: /etc/rds-ca
+          readOnly: true
   # Liquibase uses pgjdbc, which takes the TLS settings as JDBC URL parameters.
   - target:
       kind: Job
       name: migrate
     patch: |-
+      # Appends: an add on the list path replaces the list, which drops the base volumes.
       - op: add
-        path: /spec/template/spec/volumes
+        path: /spec/template/spec/volumes/-
         value:
-          - name: rds-ca
-            configMap:
-              name: rds-ca
+          name: rds-ca
+          configMap:
+            name: rds-ca
       - op: add
-        path: /spec/template/spec/containers/0/volumeMounts
+        path: /spec/template/spec/containers/0/volumeMounts/-
         value:
-          - name: rds-ca
-            mountPath: /etc/rds-ca
-            readOnly: true
+          name: rds-ca
+          mountPath: /etc/rds-ca
+          readOnly: true
       - op: test
         path: /spec/template/spec/containers/0/args/2
         value: --url=jdbc:postgresql://$(PGHOST):$(PGPORT)/$(PGDATABASE)
