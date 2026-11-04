@@ -30,9 +30,23 @@ spec:
       labels:
         app.kubernetes.io/name: postgres
     spec:
+      securityContext:
+        runAsNonRoot: true
+        # Not the image's UID 999: Checkov wants a UID above 10000.
+        runAsUser: 10001
+        runAsGroup: 10001
+        # Makes the volume writable for the non-root user on storage that supports ownership changes.
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: postgres:16
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: tcp-postgres
               containerPort: 5432
@@ -58,6 +72,11 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            # The entrypoint writes a temporary passwd file here for initdb (nss_wrapper).
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             exec:
               command: ["sh", "-c", 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"']
@@ -74,6 +93,13 @@ spec:
               memory: 128Mi
             limits:
               memory: 512Mi
+      volumes:
+        - name: run
+          emptyDir:
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
   volumeClaimTemplates:
     - metadata:
         name: postgres-data

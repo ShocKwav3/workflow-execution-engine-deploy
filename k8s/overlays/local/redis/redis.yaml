@@ -30,10 +30,24 @@ spec:
       labels:
         app.kubernetes.io/name: redis
     spec:
+      securityContext:
+        runAsNonRoot: true
+        # Not the image's UID 999: Checkov wants a UID above 10000.
+        runAsUser: 10001
+        runAsGroup: 10001
+        # Makes the volume writable for the non-root user on storage that supports ownership changes.
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: redis
           image: redis:8.10.2
           command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: tcp-redis
               containerPort: 6379
