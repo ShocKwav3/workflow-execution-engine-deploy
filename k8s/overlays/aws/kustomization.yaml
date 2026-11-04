@@ -12,6 +12,7 @@ resources:
   - ../../base
   - app-env-external-secret.yaml
   - app-secrets-external-secret.yaml
+  - network-policies.yaml
 
 images:
   - name: workflow-engine/api

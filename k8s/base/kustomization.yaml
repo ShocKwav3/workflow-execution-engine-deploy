@@ -15,6 +15,7 @@ resources:
   - outbox-relay.yaml
   - executor.yaml
   - migrate-job.yaml
+  - network-policies.yaml
 
 configMapGenerator:
   - name: app-config
