@@ -3,6 +3,7 @@ name: infra
 on:
   workflow_dispatch:
     inputs:
+      # checkov:skip=CKV_GHA_7:the inputs choose an operation (apply or destroy); the workflow builds no artifact
       action:
         description: Create or remove the environment (env and cluster-addons)
         type: choice
