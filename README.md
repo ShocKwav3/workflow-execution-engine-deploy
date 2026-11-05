@@ -25,7 +25,7 @@ GitHub Actions. Every pull request and push to `main` runs `.github/workflows/ci
 - `render`: renders each Kustomize overlay and checks that the Redis configuration matches the app repository.
 - `terraform`: `terraform fmt -check`, then `validate` for each configuration. It does not need AWS access.
 - `config-scan`: a static security scan of the Terraform code, the rendered overlays of `render`, and the workflows (Checkov).
-- `infra-plan`: on a pull request that changes Terraform files, runs `terraform plan` for `bootstrap` and `env` with the read-only plan role (GitHub OIDC, no stored AWS keys). On other runs, it does nothing and succeeds. It needs the repository secrets `AWS_ACCOUNT_ID` and `OPERATOR_CIDR`. `cluster-addons` is not planned, because it needs a running cluster.
+- `infra-plan`: on a pull request that changes Terraform files, runs `terraform plan` for `bootstrap` and `env` with the read-only plan role (GitHub OIDC, no stored AWS keys). It then checks the planned IAM policies with IAM Access Analyzer policy validation (`tf-policy-validator`; an `ERROR` finding fails the job), and checks with Conftest that every IAM role in `env` has a permissions boundary (policy in `infra/terraform/policy/`). On other runs, it does nothing and succeeds. It needs the repository secrets `AWS_ACCOUNT_ID` and `OPERATOR_CIDR`. `cluster-addons` is not planned, because it needs a running cluster.
 - `ci-passed`: fails unless every job above succeeded. It is the only required check on `main`. It posts a table of the job results on the pull request, with the scan findings in collapsed sections.
 
 The config scan only reports: a finding does not fail the job or block the merge.

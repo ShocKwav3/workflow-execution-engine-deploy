@@ -66,5 +66,59 @@ jobs:
           for config in bootstrap env; do
             echo "==> $config"
             terraform -chdir="infra/terraform/$config" init -input=false -backend-config="bucket=wee-tfstate-${AWS_ACCOUNT_ID}-us-east-1-an"
-            terraform -chdir="infra/terraform/$config" plan -input=false -no-color
+            terraform -chdir="infra/terraform/$config" plan -input=false -no-color -out="$config.tfplan"
+            # The JSON holds every attribute of every resource; it stays on the runner and is never uploaded
+            terraform -chdir="infra/terraform/$config" show -json "$config.tfplan" > "$RUNNER_TEMP/$config.json"
           done
+
+      - name: Install Python for the policy validator
+        if: steps.changes.outputs.terraform == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      # PyPI 0.0.9 cannot parse plans of Terraform 1.12 and later; this commit has the fix
+      - name: Check out the policy validator
+        if: steps.changes.outputs.terraform == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: awslabs/terraform-iam-policy-validator
+          ref: 0872b5d4a9d1ecb8bc2207e64ff4dd2409a78352
+          path: .policy-validator
+
+      - name: Install the policy validator
+        if: steps.changes.outputs.terraform == 'true'
+        run: pip install ./.policy-validator
+
+      - name: Validate the IAM policies with IAM Access Analyzer
+        if: steps.changes.outputs.terraform == 'true'
+        run: |
+          for config in bootstrap env; do
+            echo "==> $config"
+            tf-policy-validator validate \
+              --config .policy-validator/iam_check/config/default.yaml \
+              --template-path "$RUNNER_TEMP/$config.json" \
+              --region us-east-1 \
+              --treat-finding-type-as-blocking ERROR
+          done
+
+      - name: Install Conftest 0.71.1
+        if: steps.changes.outputs.terraform == 'true'
+        env:
+          CONFTEST_VERSION: 0.71.1
+          CONFTEST_SHA256: c3f6b2a753bd56e377a1e51a95ae3e057f926f2e9139f7d5b5dfbbaf810f7985
+        run: |
+          archive="conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/${archive}"
+          echo "${CONFTEST_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" conftest
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Test the Conftest policy
+        if: steps.changes.outputs.terraform == 'true'
+        run: conftest verify --policy infra/terraform/policy
+
+      # bootstrap is not checked: its CI roles have no boundary by design
+      - name: Check that every IAM role in env has a permissions boundary
+        if: steps.changes.outputs.terraform == 'true'
+        run: conftest test "$RUNNER_TEMP/env.json" --policy infra/terraform/policy
