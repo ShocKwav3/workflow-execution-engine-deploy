@@ -20,10 +20,21 @@ jobs:
     needs: [render]
     uses: ./.github/workflows/config-scan.yml
 
+  infra-plan:
+    # A called workflow cannot get more permissions than its caller grants
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    uses: ./.github/workflows/infra-plan.yml
+    secrets:
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      OPERATOR_CIDR: ${{ secrets.OPERATOR_CIDR }}
+
   ci-passed:
     # always() so the gate fails instead of being skipped when a needed job fails
     if: always()
-    needs: [render, terraform, config-scan]
+    needs: [render, terraform, config-scan, infra-plan]
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: write

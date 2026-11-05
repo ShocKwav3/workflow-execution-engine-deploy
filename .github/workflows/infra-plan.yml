@@ -1,0 +1,70 @@
+name: infra-plan
+
+on:
+  workflow_call:
+    secrets:
+      AWS_ACCOUNT_ID:
+        required: true
+      OPERATOR_CIDR:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  infra-plan:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    env:
+      TF_IN_AUTOMATION: "1"
+
+    steps:
+      # The plan role trusts only pull_request runs, so a push run skips every step below and the job still succeeds
+      - name: Find changed Terraform files
+        id: changes
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            terraform:
+              - 'infra/terraform/**'
+              - '.github/workflows/infra-plan.yml'
+
+      - name: Report that no plan is needed
+        if: steps.changes.outputs.terraform != 'true'
+        run: |
+          echo "No plan: the run is not a pull request, or no Terraform file changed." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check out the repository
+        if: steps.changes.outputs.terraform == 'true'
+        uses: actions/checkout@v7
+
+      - name: Install Terraform 1.17.0
+        if: steps.changes.outputs.terraform == 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.0
+          terraform_wrapper: false
+
+      - name: Assume the plan role
+        if: steps.changes.outputs.terraform == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ci/wee-terraform-plan
+          aws-region: us-east-1
+          mask-aws-account-id: true
+
+      - name: Plan bootstrap and env
+        if: steps.changes.outputs.terraform == 'true'
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          TF_VAR_operator_cidr: ${{ secrets.OPERATOR_CIDR }}
+        run: |
+          for config in bootstrap env; do
+            echo "==> $config"
+            terraform -chdir="infra/terraform/$config" init -input=false -backend-config="bucket=wee-tfstate-${AWS_ACCOUNT_ID}-us-east-1-an"
+            terraform -chdir="infra/terraform/$config" plan -input=false -no-color
+          done
