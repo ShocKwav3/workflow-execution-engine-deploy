@@ -13,6 +13,9 @@ resource "helm_release" "eso" {
       value = "external-secrets"
     },
   ]
+
+  # The LB controller webhook intercepts every Service create; ESO's Services fail until the controller Pods are ready.
+  depends_on = [helm_release.lb_controller]
 }
 
 # A kubernetes_manifest would need the ESO CRDs at plan time; Helm does not check them.
