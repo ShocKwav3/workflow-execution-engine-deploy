@@ -86,6 +86,15 @@ jobs:
           ref: 0872b5d4a9d1ecb8bc2207e64ff4dd2409a78352
           path: .policy-validator
 
+      # shortcut: upstream maps aws_vpc_endpoint to the bare key fakeName, which crashes on a known endpoint policy; remove when upstream adds a default
+      - name: Patch the policy validator config for aws_vpc_endpoint
+        if: steps.changes.outputs.terraform == 'true'
+        run: |
+          config=.policy-validator/iam_check/config/default.yaml
+          sed -i -E 's/^([[:space:]]*aws_vpc_endpoint:[[:space:]]*)fakeName[[:space:]]*$/\1id?fakename/' "$config"
+          grep -Eq '^[[:space:]]*aws_vpc_endpoint:[[:space:]]*id\?fakename$' "$config" \
+            || { echo "::error::The aws_vpc_endpoint patch did not apply; check $config."; exit 1; }
+
       - name: Install the policy validator
         if: steps.changes.outputs.terraform == 'true'
         run: pip install ./.policy-validator
