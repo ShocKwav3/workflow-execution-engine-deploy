@@ -1,0 +1,129 @@
+name: infra
+
+on:
+  workflow_dispatch:
+    inputs:
+      # checkov:skip=CKV_GHA_7:the inputs choose an operation (apply or destroy); the workflow builds no artifact
+      action:
+        description: Create or remove the environment (env and cluster-addons)
+        type: choice
+        options: [apply, destroy]
+        required: true
+      confirm:
+        description: Type the action again to confirm it
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+# Two runs must never change the same environment at the same time
+concurrency:
+  group: infra
+  cancel-in-progress: false
+
+jobs:
+  confirm:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require the confirmation to match the action
+        env:
+          ACTION: ${{ inputs.action }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$ACTION" != "$CONFIRM" ]; then
+            echo "::error::Type '$ACTION' in the confirm field to $ACTION the environment."
+            exit 1
+          fi
+
+  infra:
+    needs: [confirm]
+    runs-on: ubuntu-24.04
+    environment: aws
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "1"
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      TF_VAR_operator_cidr: ${{ secrets.OPERATOR_CIDR }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Terraform 1.17.0
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.0
+          terraform_wrapper: false
+
+      - name: Assume the apply role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ci/wee-terraform-apply
+          aws-region: us-east-1
+          mask-aws-account-id: true
+
+      - name: Initialize env and cluster-addons
+        run: |
+          for config in env cluster-addons; do
+            terraform -chdir="infra/terraform/$config" init -input=false -backend-config="bucket=wee-tfstate-${AWS_ACCOUNT_ID}-us-east-1-an"
+          done
+
+      # A saved plan makes the apply run exactly the changes that the log shows
+      - name: Apply env
+        if: inputs.action == 'apply'
+        working-directory: infra/terraform/env
+        run: |
+          terraform plan -input=false -no-color -out=env.tfplan
+          terraform apply -input=false -no-color env.tfplan
+
+      - name: Apply cluster-addons
+        if: inputs.action == 'apply'
+        working-directory: infra/terraform/cluster-addons
+        run: |
+          terraform plan -input=false -no-color -out=cluster-addons.tfplan
+          terraform apply -input=false -no-color cluster-addons.tfplan
+
+      - name: Check whether the cluster exists
+        id: cluster
+        if: inputs.action == 'destroy'
+        run: |
+          if aws eks describe-cluster --name wee > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cluster wee does not exist; the Kubernetes and cluster-addons steps are skipped."
+          fi
+
+      # The LB controller deletes the NLB only while it still runs, so the Service goes before cluster-addons
+      - name: Delete the api Service and the app namespace
+        if: inputs.action == 'destroy' && steps.cluster.outputs.exists == 'true'
+        run: |
+          aws eks update-kubeconfig --name wee --region us-east-1
+          kubectl delete service api --namespace workflow-engine --ignore-not-found --timeout=5m
+          kubectl delete namespace workflow-engine --ignore-not-found --timeout=10m
+
+      - name: Destroy cluster-addons
+        if: inputs.action == 'destroy' && steps.cluster.outputs.exists == 'true'
+        working-directory: infra/terraform/cluster-addons
+        run: terraform destroy -input=false -no-color -auto-approve
+
+      # The LB controller normally deletes this group itself; a leftover blocks the VPC delete
+      - name: Delete a leftover LB controller security group
+        if: inputs.action == 'destroy'
+        run: |
+          ids=$(aws ec2 describe-security-groups \
+            --filters Name=tag:elbv2.k8s.aws/cluster,Values=wee Name=tag:elbv2.k8s.aws/resource,Values=backend-sg \
+            --query 'SecurityGroups[].GroupId' --output text)
+          for id in $ids; do
+            aws ec2 delete-security-group --group-id "$id" \
+              || echo "::warning::Security group $id could not be deleted; the env destroy can wait on the VPC because of it."
+          done
+
+      - name: Destroy env
+        if: inputs.action == 'destroy'
+        working-directory: infra/terraform/env
+        run: terraform destroy -input=false -no-color -auto-approve

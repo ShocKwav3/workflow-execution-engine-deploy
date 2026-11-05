@@ -1,0 +1,124 @@
+name: infra-plan
+
+on:
+  workflow_call:
+    secrets:
+      AWS_ACCOUNT_ID:
+        required: true
+      OPERATOR_CIDR:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  infra-plan:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    env:
+      TF_IN_AUTOMATION: "1"
+
+    steps:
+      # The plan role trusts only pull_request runs, so a push run skips every step below and the job still succeeds
+      - name: Find changed Terraform files
+        id: changes
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            terraform:
+              - 'infra/terraform/**'
+              - '.github/workflows/infra-plan.yml'
+
+      - name: Report that no plan is needed
+        if: steps.changes.outputs.terraform != 'true'
+        run: |
+          echo "No plan: the run is not a pull request, or no Terraform file changed." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check out the repository
+        if: steps.changes.outputs.terraform == 'true'
+        uses: actions/checkout@v7
+
+      - name: Install Terraform 1.17.0
+        if: steps.changes.outputs.terraform == 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.0
+          terraform_wrapper: false
+
+      - name: Assume the plan role
+        if: steps.changes.outputs.terraform == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ci/wee-terraform-plan
+          aws-region: us-east-1
+          mask-aws-account-id: true
+
+      - name: Plan bootstrap and env
+        if: steps.changes.outputs.terraform == 'true'
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+          TF_VAR_operator_cidr: ${{ secrets.OPERATOR_CIDR }}
+        run: |
+          for config in bootstrap env; do
+            echo "==> $config"
+            terraform -chdir="infra/terraform/$config" init -input=false -backend-config="bucket=wee-tfstate-${AWS_ACCOUNT_ID}-us-east-1-an"
+            terraform -chdir="infra/terraform/$config" plan -input=false -no-color -out="$config.tfplan"
+            # The JSON holds every attribute of every resource; it stays on the runner and is never uploaded
+            terraform -chdir="infra/terraform/$config" show -json "$config.tfplan" > "$RUNNER_TEMP/$config.json"
+          done
+
+      - name: Install Python for the policy validator
+        if: steps.changes.outputs.terraform == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      # PyPI 0.0.9 cannot parse plans of Terraform 1.12 and later; this commit has the fix
+      - name: Check out the policy validator
+        if: steps.changes.outputs.terraform == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: awslabs/terraform-iam-policy-validator
+          ref: 0872b5d4a9d1ecb8bc2207e64ff4dd2409a78352
+          path: .policy-validator
+
+      - name: Install the policy validator
+        if: steps.changes.outputs.terraform == 'true'
+        run: pip install ./.policy-validator
+
+      - name: Validate the IAM policies with IAM Access Analyzer
+        if: steps.changes.outputs.terraform == 'true'
+        run: |
+          for config in bootstrap env; do
+            echo "==> $config"
+            tf-policy-validator validate \
+              --config .policy-validator/iam_check/config/default.yaml \
+              --template-path "$RUNNER_TEMP/$config.json" \
+              --region us-east-1 \
+              --treat-finding-type-as-blocking ERROR
+          done
+
+      - name: Install Conftest 0.71.1
+        if: steps.changes.outputs.terraform == 'true'
+        env:
+          CONFTEST_VERSION: 0.71.1
+          CONFTEST_SHA256: c3f6b2a753bd56e377a1e51a95ae3e057f926f2e9139f7d5b5dfbbaf810f7985
+        run: |
+          archive="conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/${archive}"
+          echo "${CONFTEST_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" conftest
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Test the Conftest policy
+        if: steps.changes.outputs.terraform == 'true'
+        run: conftest verify --policy infra/terraform/policy
+
+      # bootstrap is not checked: its CI roles have no boundary by design
+      - name: Check that every IAM role in env has a permissions boundary
+        if: steps.changes.outputs.terraform == 'true'
+        run: conftest test "$RUNNER_TEMP/env.json" --policy infra/terraform/policy
