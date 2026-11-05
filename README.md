@@ -30,4 +30,9 @@ GitHub Actions. Every pull request and push to `main` runs `.github/workflows/ci
 
 The config scan only reports: a finding does not fail the job or block the merge.
 
+`.github/workflows/infra.yml` creates or removes the AWS environment. It runs only on manual dispatch from `main` (**Actions → infra → Run workflow**), in the GitHub environment `aws`, with the apply role. Choose `apply` or `destroy`, and type the same word in `confirm`.
+
+- `apply`: plans and applies `env`, then `cluster-addons`.
+- `destroy`: deletes the api Service and the `workflow-engine` namespace (so that the Load Balancer Controller removes the NLB), destroys `cluster-addons`, deletes a leftover Load Balancer Controller security group, then destroys `env`.
+
 More: [`.github/workflows/`](.github/workflows/)
