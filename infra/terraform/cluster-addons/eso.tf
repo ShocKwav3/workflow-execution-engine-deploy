@@ -5,6 +5,8 @@ resource "helm_release" "eso" {
   version          = "2.14.0"
   namespace        = "external-secrets"
   create_namespace = true
+  # Removes a failed install, so the name is free for the next apply
+  atomic = true
 
   set = [
     {
@@ -23,6 +25,8 @@ resource "helm_release" "secret_stores" {
   name      = "secret-stores"
   chart     = "${path.module}/charts/secret-stores"
   namespace = "external-secrets"
+  # Removes a failed install, so the name is free for the next apply
+  atomic = true
 
   set = [
     {

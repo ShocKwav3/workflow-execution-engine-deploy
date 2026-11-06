@@ -5,6 +5,8 @@ resource "helm_release" "lb_controller" {
   # The IAM policy file in the env config belongs to this version; update both together.
   version   = "3.6.2"
   namespace = "kube-system"
+  # Removes a failed install, so the name is free for the next apply
+  atomic = true
 
   set = [
     {
