@@ -62,6 +62,8 @@ terraform init -backend-config="bucket=wee-tfstate-${ACCOUNT_ID}-us-east-1-an"
 
 ## Rebuild
 
+The usual way is the session workflows: `infra` `apply`, then `deploy` ([`.github/workflows/`](../../.github/workflows/README.md)). The steps below do the same from a workstation.
+
 Initialize each configuration first (see above).
 
 1. Create the AWS environment, and point `kubectl` at the new cluster. Each new cluster has a new API endpoint.
@@ -76,11 +78,13 @@ Initialize each configuration first (see above).
    cd ../cluster-addons
    terraform apply
    ```
-3. Push the images and deploy the app: [`k8s/deploy-aws.md`](../../k8s/deploy-aws.md).
+3. Deploy the app with the `deploy` workflow. It builds the images, pushes them to the new ECR repositories and deploys them. [`k8s/deploy-aws.md`](../../k8s/deploy-aws.md) describes the manual deploy; it expects the images in ECR already.
 
 `env` bills by the hour while it exists (EKS control plane, nodes, NAT gateway, RDS, ElastiCache), and the API load balancer adds to that. Tear everything down at the end of each session.
 
 ## Teardown
+
+The usual way is the `infra` workflow with `destroy`. The steps below do the same from a workstation.
 
 The order matters. The controllers delete what they created in AWS and remove their finalizers only while they run.
 
@@ -103,7 +107,16 @@ The order matters. The controllers delete what they created in AWS and remove th
    export TF_VAR_operator_cidr="$(curl -fsS https://checkip.amazonaws.com)/32"
    terraform destroy
    ```
-   If the VPC delete waits on a `DependencyViolation`, the controller's shared backend security group `k8s-traffic-wee-…` is still in the VPC. Delete it with `aws ec2 delete-security-group`, and the destroy continues.
+   If a subnet or the VPC delete waits on a `DependencyViolation`, find what is left in the VPC:
+   ```bash
+   VPC_ID="$(aws ec2 describe-vpcs --region us-east-1 --filters Name=tag:Name,Values=wee-vpc --query 'Vpcs[0].VpcId' --output text)"
+   aws ec2 describe-network-interfaces --region us-east-1 --filters Name=vpc-id,Values="$VPC_ID" --query 'NetworkInterfaces[].[NetworkInterfaceId,Status,Description]' --output table
+   aws ec2 describe-security-groups --region us-east-1 --filters Name=vpc-id,Values="$VPC_ID" --query 'SecurityGroups[].[GroupId,GroupName]' --output table
+   ```
+   - An `available` network interface with the description `aws-K8S-…`: the VPC CNI leaked it when a node terminated. Delete it with `aws ec2 delete-network-interface`.
+   - A security group `eks-cluster-sg-wee-…` or `k8s-traffic-wee-…`: EKS or the Load Balancer Controller could not delete it. Delete it with `aws ec2 delete-security-group`.
+
+   The destroy continues after the delete.
 
 If `cluster-addons` is destroyed while the namespace still exists, the deletes hang on finalizers. Apply only the controller again (`terraform apply -target=helm_release.lb_controller`), wait for the namespace, then destroy.
 
