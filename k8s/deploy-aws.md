@@ -1,6 +1,8 @@
 # Deploy to AWS (EKS)
 
-This guide deploys the AWS overlay (`overlays/aws`) to an EKS cluster. Run the commands from the repository root.
+This guide deploys the AWS overlay (`overlays/aws`) to an EKS cluster by hand. Run the commands from the repository root.
+
+The usual way is the `deploy` workflow ([`.github/workflows/`](../.github/workflows/README.md)). It runs the same steps and also builds and pushes the images. Use this guide when you need to run a step yourself, for example to debug a failed deploy.
 
 The overlay holds no account-specific or environment-specific values. The deploy reads them from AWS and from the app repository:
 
