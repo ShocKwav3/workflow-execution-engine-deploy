@@ -35,4 +35,11 @@ The config scan only reports: a finding does not fail the job or block the merge
 - `apply`: plans and applies `env`, then `cluster-addons`.
 - `destroy`: deletes the api Service and the `workflow-engine` namespace (so that the Load Balancer Controller removes the NLB), destroys `cluster-addons`, deletes a leftover Load Balancer Controller security group, then destroys `env`.
 
+`.github/workflows/deploy.yml` deploys the app to the running environment. It runs only on manual dispatch from `main` (**Actions → deploy → Run workflow**), after `infra` `apply`. The optional input `sha` is a full commit SHA of the app repository; empty deploys the latest `main`.
+
+- `build` (arm64): stops if no cluster exists, checks out the app repository, and builds and pushes to ECR only the images that are not there yet. The tag is the short commit SHA.
+- `deploy`: sets the image tags in a copy of `k8s/overlays/aws` on the runner, applies everything except the apps, waits for the migration Job, then applies the apps and waits for the rollout. No commit records the deployed tag.
+
+Run `deploy` in every session, also without a code change: ECR is created empty with each `apply`.
+
 More: [`.github/workflows/`](.github/workflows/)
