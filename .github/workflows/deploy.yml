@@ -1,0 +1,186 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      # checkov:skip=CKV_GHA_7:the only input is the source revision, which SLSA allows as a build parameter
+      sha:
+        description: Full commit SHA of the app repository; empty deploys the latest main
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+# Same group as the infra workflow, so a deploy never runs during an apply or a destroy
+concurrency:
+  group: infra
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  APP_REPOSITORY: ShocKwav3/workflow-execution-engine
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    environment: aws
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - name: Require a full commit SHA or nothing
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          if [ -n "$SHA" ] && ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be empty or a full 40-character commit SHA."
+            exit 1
+          fi
+
+      - name: Assume the apply role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ci/wee-terraform-apply
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      # ECR lives in env, so without this check the first failure is a confusing ECR error
+      - name: Require a running environment
+        run: |
+          if ! aws eks describe-cluster --name wee > /dev/null 2>&1; then
+            echo "::error::No environment is running. Run the infra workflow with apply first."
+            exit 1
+          fi
+
+      - name: Check out the app repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.APP_REPOSITORY }}
+          ref: ${{ inputs.sha || 'main' }}
+
+      - name: Set the image tag
+        id: tag
+        run: |
+          sha="$(git rev-parse HEAD)"
+          echo "Deploying $APP_REPOSITORY@$sha" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=${sha:0:7}" >> "$GITHUB_OUTPUT"
+
+      # The repositories have immutable tags, so an image that exists must not be pushed again
+      - name: Find the images that are not in ECR yet
+        id: images
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          missing=()
+          for image in api outbox-relay executor migrate; do
+            if out=$(aws ecr describe-images --repository-name "workflow-engine/$image" --image-ids imageTag="$TAG" 2>&1); then
+              echo "$image:$TAG exists"
+            elif grep -q ImageNotFoundException <<< "$out"; then
+              missing+=("$image")
+            else
+              echo "$out"
+              exit 1
+            fi
+          done
+          echo "missing=$(IFS=,; echo "${missing[*]}")" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ECR
+        if: steps.images.outputs.missing != ''
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: aws ecr get-login-password | docker login --username AWS --password-stdin "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      - name: Set up the Docker image builder
+        if: steps.images.outputs.missing != ''
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build and push the missing images
+        if: steps.images.outputs.missing != ''
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
+        with:
+          # The default remote Git context ignores the checkout; build the checked-out files
+          source: .
+          files: docker/docker-bake.hcl
+          targets: ${{ steps.images.outputs.missing }}
+          push: true
+          set: |
+            api.tags=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/workflow-engine/api:${{ steps.tag.outputs.tag }}
+            outbox-relay.tags=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/workflow-engine/outbox-relay:${{ steps.tag.outputs.tag }}
+            executor.tags=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/workflow-engine/executor:${{ steps.tag.outputs.tag }}
+            migrate.tags=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/workflow-engine/migrate:${{ steps.tag.outputs.tag }}
+            api.cache-from=type=gha,scope=api
+            api.cache-to=type=gha,scope=api,mode=max
+            outbox-relay.cache-from=type=gha,scope=outbox-relay
+            outbox-relay.cache-to=type=gha,scope=outbox-relay,mode=max
+            executor.cache-from=type=gha,scope=executor
+            executor.cache-to=type=gha,scope=executor,mode=max
+            migrate.cache-from=type=gha,scope=migrate
+            migrate.cache-to=type=gha,scope=migrate,mode=max
+
+  deploy:
+    needs: [build]
+    # The x64 image has kustomize preinstalled; the build needs arm64, the deploy does not
+    runs-on: ubuntu-24.04
+    environment: aws
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Assume the apply role
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ci/wee-terraform-apply
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Connect kubectl to the cluster
+        run: aws eks update-kubeconfig --name wee --region "$AWS_REGION"
+
+      # The edit stays on the runner; the committed tag stays "unset" and no commit records the deploy
+      - name: Set the image tags in the AWS overlay
+        working-directory: k8s/overlays/aws
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+        run: |
+          registry="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          for image in api outbox-relay executor migrate; do
+            kustomize edit set image "workflow-engine/$image=$registry/workflow-engine/$image:$TAG"
+          done
+
+      # A failed migration stops the deploy here, so the apps keep the previous version
+      - name: Apply everything except the apps and wait for the migration
+        run: |
+          kubectl apply -k k8s/overlays/aws -l 'app.kubernetes.io/name notin (api,outbox-relay,executor)'
+          kubectl wait --for=condition=complete "job/migrate-$TAG" -n workflow-engine --timeout=5m
+
+      - name: Apply the apps and wait for the rollout
+        run: |
+          kubectl apply -k k8s/overlays/aws
+          for app in api outbox-relay executor; do
+            kubectl rollout status "deploy/$app" -n workflow-engine --timeout=5m
+          done
+
+      - name: Print the API address
+        run: |
+          host="$(kubectl get service api -n workflow-engine -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+          echo "API: http://$host (the DNS name can take a few minutes to resolve)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Print the cluster state
+        if: failure()
+        run: |
+          kubectl get pods,jobs,externalsecrets -n workflow-engine -o wide || true
+          kubectl get events -n workflow-engine --sort-by=.lastTimestamp | tail -n 40 || true
+          kubectl logs "job/migrate-$TAG" -n workflow-engine --tail=100 || true
