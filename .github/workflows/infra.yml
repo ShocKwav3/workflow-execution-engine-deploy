@@ -123,6 +123,30 @@ jobs:
               || echo "::warning::Security group $id could not be deleted; the env destroy can wait on the VPC because of it."
           done
 
+      # The VPC CNI can leak an ENI when a node terminates (detach and delete are two calls); remove the nodes first, then the leaks
+      - name: Destroy the node group
+        if: inputs.action == 'destroy'
+        working-directory: infra/terraform/env
+        run: terraform destroy -input=false -no-color -auto-approve -target=aws_eks_node_group.main
+
+      # Same criteria as the VPC CNI's own leaked-ENI cleanup, limited to the wee VPC
+      - name: Delete ENIs leaked by the VPC CNI
+        if: inputs.action == 'destroy'
+        run: |
+          vpc_id=$(aws ec2 describe-vpcs --filters Name=tag:Name,Values=wee-vpc --query 'Vpcs[0].VpcId' --output text)
+          if [ "$vpc_id" = "None" ]; then
+            echo "No wee VPC left; nothing to clean up."
+            exit 0
+          fi
+          ids=$(aws ec2 describe-network-interfaces \
+            --filters Name=vpc-id,Values="$vpc_id" Name=status,Values=available \
+              Name=description,Values='aws-K8S-*' Name=tag-key,Values=node.k8s.amazonaws.com/instance_id \
+            --query 'NetworkInterfaces[].NetworkInterfaceId' --output text)
+          for id in $ids; do
+            echo "Deleting leaked ENI $id"
+            aws ec2 delete-network-interface --network-interface-id "$id"
+          done
+
       - name: Destroy env
         if: inputs.action == 'destroy'
         working-directory: infra/terraform/env

@@ -33,7 +33,7 @@ The config scan only reports: a finding does not fail the job or block the merge
 `.github/workflows/infra.yml` creates or removes the AWS environment. It runs only on manual dispatch from `main` (**Actions → infra → Run workflow**), in the GitHub environment `aws`, with the apply role. Choose `apply` or `destroy`, and type the same word in `confirm`.
 
 - `apply`: plans and applies `env`, then `cluster-addons`.
-- `destroy`: deletes the api Service and the `workflow-engine` namespace (so that the Load Balancer Controller removes the NLB), destroys `cluster-addons`, deletes a leftover Load Balancer Controller security group, then destroys `env`.
+- `destroy`: deletes the api Service and the `workflow-engine` namespace (so that the Load Balancer Controller removes the NLB), destroys `cluster-addons`, deletes a leftover Load Balancer Controller security group, destroys the node group, deletes the network interfaces that the VPC CNI leaked when the nodes terminated (they block the subnet delete), then destroys the rest of `env`.
 
 `.github/workflows/deploy.yml` deploys the app to the running environment. It runs only on manual dispatch from `main` (**Actions → deploy → Run workflow**), after `infra` `apply`. The optional input `sha` is a full commit SHA of the app repository; empty deploys the latest `main`.
 
